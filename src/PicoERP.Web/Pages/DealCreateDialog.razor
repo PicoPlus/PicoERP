@@ -45,13 +45,15 @@
                     }
                 </MudItem>
 
-                <!-- Amount -->
+                <!-- Amount — auto-filled from line items when present -->
                 <MudItem xs="12" sm="6">
-                    <MudNumericField @bind-Value="_model.Amount"
-                                     Label="مبلغ کل"
+                    <MudNumericField Value="@_displayAmount"
+                                     ValueChanged="@((decimal v) => { if (!_lineItems.Any()) _model.Amount = v; })"
+                                     Label="@(_lineItems.Any() ? "مبلغ کل (محاسبه‌شده از اقلام)" : "مبلغ کل")"
                                      Variant="Variant.Outlined"
                                      Format="N0"
-                                     Min="0" />
+                                     Min="0"
+                                     ReadOnly="@_lineItems.Any()" />
                 </MudItem>
 
                 <!-- Close date -->
@@ -62,8 +64,10 @@
                                    Clearable="true" />
                 </MudItem>
 
-                <!-- Associated contact — live search -->
+                <!-- Associated contact — live search + quick-create -->
                 <MudItem xs="12" sm="6">
+                    <div style="display:flex;align-items:flex-start;gap:6px;">
+                    <div style="flex:1;">
                     <MudAutocomplete T="HubSpotContactDto"
                                      Label="مخاطب مرتبط"
                                      Variant="Variant.Outlined"
@@ -96,6 +100,16 @@
                             </MudText>
                         </NoItemsTemplate>
                     </MudAutocomplete>
+                    </div>
+                    <MudTooltip Text="ایجاد مخاطب جدید">
+                        <MudIconButton Icon="@Icons.Material.Filled.PersonAdd"
+                                       Color="Color.Primary"
+                                       Variant="Variant.Outlined"
+                                       Size="Size.Medium"
+                                       Style="margin-top:4px;flex-shrink:0;"
+                                       OnClick="OpenCreateContactDialog" />
+                    </MudTooltip>
+                    </div>
 
                     @if (_selectedContact != null)
                     {
@@ -120,7 +134,7 @@
                                            OnClick="@(() => _selectedContact = null)" />
                         </div>
                     }
-                </MudItem>
+                    </MudItem>
 
                 <!-- Description -->
                 <MudItem xs="12">
@@ -299,6 +313,10 @@
     private bool _showProductPicker = false;
     private string _productSearch   = "";
 
+    // Auto-computed amount: if line items exist, show their sum; otherwise show manual entry
+    private decimal _displayAmount =>
+        _lineItems.Any() ? _lineItems.Sum(x => x.Amount) : _model.Amount;
+
     private IEnumerable<HubSpotProductDto> _filteredProducts =>
         string.IsNullOrWhiteSpace(_productSearch)
             ? _products
@@ -410,6 +428,19 @@
     {
         if (idx >= 0 && idx < _lineItems.Count)
             _lineItems.RemoveAt(idx);
+        StateHasChanged();
+    }
+
+    // ── Quick-create contact ─────────────────────────────────────────────────
+
+    private async Task OpenCreateContactDialog()
+    {
+        var parameters = new DialogParameters { ["ApiKey"] = ApiKey };
+        var options    = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
+        var dialog     = await DialogService.ShowAsync<ContactCreateDialog>("ایجاد مخاطب جدید", parameters, options);
+        var result     = await dialog.Result;
+        if (!result.Canceled && result.Data is HubSpotContactDto created)
+            _selectedContact = created;
     }
 
     // ── Submit ───────────────────────────────────────────────────────────────
@@ -423,6 +454,9 @@
 
         _model.CloseDate           = _closeDate;
         _model.AssociatedContactId = _selectedContact?.Id;
+        // If line items are present, amount = their sum; otherwise use the manually entered value
+        if (_lineItems.Any())
+            _model.Amount = _lineItems.Sum(x => x.Amount);
         _error  = "";
         _saving = true;
 

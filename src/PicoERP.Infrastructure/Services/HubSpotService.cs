@@ -477,6 +477,27 @@ public class HubSpotService : IHubSpotService
         var resp = await SendAsync(HttpMethod.Patch, apiKey,
             $"/crm/v3/objects/deals/{dealId}", content);
         resp.EnsureSuccessStatusCode();
+
+        // Associate contact if provided (PUT replaces existing associations)
+        if (!string.IsNullOrWhiteSpace(dto.AssociatedContactId))
+        {
+            var assocPayload = new
+            {
+                inputs = new[]
+                {
+                    new
+                    {
+                        from = new { id = dealId },
+                        to   = new { id = dto.AssociatedContactId },
+                        types = new[] { new { associationCategory = "HUBSPOT_DEFINED", associationTypeId = 3 } }
+                    }
+                }
+            };
+            var assocContent = new StringContent(
+                JsonSerializer.Serialize(assocPayload, _json), Encoding.UTF8, "application/json");
+            await SendAsync(HttpMethod.Post, apiKey,
+                "/crm/v4/associations/deals/contacts/batch/create", assocContent);
+        }
     }
 
     // ── Delete deal ──────────────────────────────────────────────────────────
