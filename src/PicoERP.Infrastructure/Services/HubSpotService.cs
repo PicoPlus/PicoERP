@@ -121,15 +121,18 @@ public class HubSpotService : IHubSpotService
 
     public async Task<HubSpotContactDto> CreateContactAsync(string apiKey, CreateHubSpotContactDto dto)
     {
-        var payload = new { properties = ToCreateProperties(dto) };
-        var content = new StringContent(
-            JsonSerializer.Serialize(payload, _json), Encoding.UTF8, "application/json");
-        var resp = await SendAsync(HttpMethod.Post, apiKey, "/crm/v3/objects/contacts", content);
+        var props   = ToCreateProperties(dto, includeCustom: true);
+        var resp    = await PostContactAsync(HttpMethod.Post, apiKey, "/crm/v3/objects/contacts", props);
+        if (!resp.IsSuccessStatusCode && HasMissingPropertyError(await resp.Content.ReadAsStringAsync()))
+        {
+            // Retry without custom properties — this portal hasn't created them yet
+            props = ToCreateProperties(dto, includeCustom: false);
+            resp  = await PostContactAsync(HttpMethod.Post, apiKey, "/crm/v3/objects/contacts", props);
+        }
         if (!resp.IsSuccessStatusCode)
         {
             var body = await resp.Content.ReadAsStringAsync();
-            throw new InvalidOperationException(
-                $"HubSpot {(int)resp.StatusCode}: {body}");
+            throw new InvalidOperationException($"HubSpot {(int)resp.StatusCode}: {body}");
         }
         var raw = await resp.Content.ReadFromJsonAsync<HubSpotRawContact>(_json);
         return MapContact(raw ?? new HubSpotRawContact());
@@ -139,16 +142,17 @@ public class HubSpotService : IHubSpotService
 
     public async Task UpdateContactAsync(string apiKey, string hubspotId, CreateHubSpotContactDto dto)
     {
-        var payload = new { properties = ToCreateProperties(dto) };
-        var content = new StringContent(
-            JsonSerializer.Serialize(payload, _json), Encoding.UTF8, "application/json");
-        var resp = await SendAsync(HttpMethod.Patch, apiKey,
-            $"/crm/v3/objects/contacts/{hubspotId}", content);
+        var props = ToCreateProperties(dto, includeCustom: true);
+        var resp  = await PostContactAsync(HttpMethod.Patch, apiKey, $"/crm/v3/objects/contacts/{hubspotId}", props);
+        if (!resp.IsSuccessStatusCode && HasMissingPropertyError(await resp.Content.ReadAsStringAsync()))
+        {
+            props = ToCreateProperties(dto, includeCustom: false);
+            resp  = await PostContactAsync(HttpMethod.Patch, apiKey, $"/crm/v3/objects/contacts/{hubspotId}", props);
+        }
         if (!resp.IsSuccessStatusCode)
         {
             var body = await resp.Content.ReadAsStringAsync();
-            throw new InvalidOperationException(
-                $"HubSpot {(int)resp.StatusCode}: {body}");
+            throw new InvalidOperationException($"HubSpot {(int)resp.StatusCode}: {body}");
         }
     }
 
@@ -966,16 +970,35 @@ public class HubSpotService : IHubSpotService
     }
 
     /// <summary>
+    /// Returns true when a HubSpot 400 body contains a PROPERTY_DOESNT_EXIST error,
+    /// meaning the portal hasn't created that custom property yet.
+    /// </summary>
+    private static bool HasMissingPropertyError(string responseBody) =>
+        responseBody.Contains("PROPERTY_DOESNT_EXIST", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Sends a create/update request with the given properties dictionary.
+    /// </summary>
+    private async Task<HttpResponseMessage> PostContactAsync(
+        HttpMethod method, string apiKey, string path, Dictionary<string, string> props)
+    {
+        var payload = new { properties = props };
+        var content = new StringContent(
+            JsonSerializer.Serialize(payload, _json), Encoding.UTF8, "application/json");
+        return await SendAsync(method, apiKey, path, content);
+    }
+
+    /// <summary>
     /// Builds the properties dictionary for contact create / update.
     /// Rules:
     ///   • Only include a key when the value is non-null/non-empty — HubSpot rejects null values.
     ///   • Built-in properties use their official API names (firstname, lastname, email,
     ///     mobilephone, company).
-    ///   • Custom properties (ncode, fathername, date_of_birth) are only appended when
-    ///     they have a value, so an account that hasn't created those custom properties
-    ///     won't receive an unknown-property 400.
+    ///   • When includeCustom=true, custom properties (ncode, fathername, date_of_birth) are
+    ///     appended. If the portal doesn't have those properties the caller retries with
+    ///     includeCustom=false so the contact is still created without them.
     /// </summary>
-    private static Dictionary<string, string> ToCreateProperties(CreateHubSpotContactDto c)
+    private static Dictionary<string, string> ToCreateProperties(CreateHubSpotContactDto c, bool includeCustom = true)
     {
         var props = new Dictionary<string, string>();
 
@@ -986,14 +1009,13 @@ public class HubSpotService : IHubSpotService
         if (!string.IsNullOrWhiteSpace(c.MobilePhone)) props["mobilephone"] = c.MobilePhone;
         if (!string.IsNullOrWhiteSpace(c.Company))     props["company"]     = c.Company;
 
-        // ── Custom properties — only sent when populated ─────────────────────
-        // HubSpot's built-in date-of-birth field is "date_of_birth" (not "birthdate").
-        // For accounts that use the custom "ncode" / "fathername" properties these are
-        // also appended; they are silently skipped on accounts where they don't exist
-        // because we guard with try/catch in the callers.
-        if (!string.IsNullOrWhiteSpace(c.NCode))      props["ncode"]         = c.NCode;
-        if (!string.IsNullOrWhiteSpace(c.BirthDate))  props["date_of_birth"] = c.BirthDate;
-        if (!string.IsNullOrWhiteSpace(c.FatherName)) props["fathername"]    = c.FatherName;
+        // ── Custom properties — only sent when populated and allowed ─────────
+        if (includeCustom)
+        {
+            if (!string.IsNullOrWhiteSpace(c.NCode))      props["ncode"]         = c.NCode;
+            if (!string.IsNullOrWhiteSpace(c.BirthDate))  props["date_of_birth"] = c.BirthDate;
+            if (!string.IsNullOrWhiteSpace(c.FatherName)) props["fathername"]    = c.FatherName;
+        }
 
         return props;
     }
