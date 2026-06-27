@@ -1044,7 +1044,11 @@ public class HubSpotService : IHubSpotService
         if (!string.IsNullOrWhiteSpace(c.FirstName))   props["firstname"]   = c.FirstName;
         if (!string.IsNullOrWhiteSpace(c.LastName))    props["lastname"]    = c.LastName;
         if (!string.IsNullOrWhiteSpace(c.Email))       props["email"]       = c.Email;
-        if (!string.IsNullOrWhiteSpace(c.MobilePhone)) props["mobilephone"] = c.MobilePhone;
+        if (!string.IsNullOrWhiteSpace(c.MobilePhone))
+        {
+            props["mobilephone"] = c.MobilePhone;
+            props["phone"]       = c.MobilePhone;   // also populate the standard phone field
+        }
         if (!string.IsNullOrWhiteSpace(c.Company))     props["company"]     = c.Company;
 
         // ── Custom properties — only sent when populated and allowed ─────────
