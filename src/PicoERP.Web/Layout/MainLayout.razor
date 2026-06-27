@@ -17,14 +17,16 @@ else
 {
     <MudLayout dir="rtl">
         <!-- Top AppBar -->
-        <MudAppBar Elevation="2" Dense="false" Fixed="true" Style="background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%); z-index:1200;">
+        <MudAppBar Elevation="0" Dense="false" Fixed="true" Style="background:linear-gradient(135deg,#1565C0 0%,#0D47A1 60%,#004D7A 100%);z-index:1200;">
             <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start"
                            OnClick="@(() => _drawerOpen = !_drawerOpen)" />
-            <img src="/logo.svg" alt="PicoERP" style="height:36px; width:36px; margin-left:8px; border-radius:6px; background:white; padding:2px;" />
-            <MudText Typo="Typo.h6" Style="font-weight:700; letter-spacing:0;">
-                پیکو ERP
-            </MudText>
-            <MudText Typo="Typo.caption" Style="margin-right:12px; opacity:0.8;">@AppState.BusinessName</MudText>
+            <div style="display:flex;align-items:center;gap:8px;margin-right:4px;">
+                <div style="width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;">
+                    <img src="/logo.svg" alt="PicoERP" style="height:22px;width:22px;filter:brightness(0) invert(1);" />
+                </div>
+                <MudText Typo="Typo.h6" Style="font-weight:800;letter-spacing:-.3px;">پیکو ERP</MudText>
+            </div>
+            <MudText Typo="Typo.caption" Style="margin-right:8px;opacity:.7;font-size:.78rem;">@AppState.BusinessName</MudText>
             <MudSpacer />
             <!-- Persian Clock -->
             <PersianClock />
