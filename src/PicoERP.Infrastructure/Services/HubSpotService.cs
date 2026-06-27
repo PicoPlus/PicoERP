@@ -77,9 +77,20 @@ public class HubSpotService : IHubSpotService
 
     public async Task<List<HubSpotContactDto>> SearchContactsAsync(string apiKey, string query, int limit = 10)
     {
+        // Use filterGroups so we match across name, mobile and ncode regardless of HubSpot's
+        // full-text index. Each OR-branch is a separate filterGroup.
+        var q = query.Trim();
         var body = new
         {
-            query,
+            filterGroups = new[]
+            {
+                new { filters = new[] { new { propertyName = "firstname",   @operator = "CONTAINS_TOKEN", value = q } } },
+                new { filters = new[] { new { propertyName = "lastname",    @operator = "CONTAINS_TOKEN", value = q } } },
+                new { filters = new[] { new { propertyName = "mobilephone", @operator = "CONTAINS_TOKEN", value = q } } },
+                new { filters = new[] { new { propertyName = "phone",       @operator = "CONTAINS_TOKEN", value = q } } },
+                new { filters = new[] { new { propertyName = "ncode",       @operator = "CONTAINS_TOKEN", value = q } } },
+                new { filters = new[] { new { propertyName = "email",       @operator = "CONTAINS_TOKEN", value = q } } },
+            },
             limit,
             properties = new[] { "firstname","lastname","email","phone","mobilephone","company","ncode" }
         };

@@ -95,9 +95,18 @@
                             </div>
                         </ItemTemplate>
                         <NoItemsTemplate>
-                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-4 py-2">
-                                مخاطبی یافت نشد
-                            </MudText>
+                            @if (!string.IsNullOrEmpty(_searchError))
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Error" Class="px-4 py-2">
+                                    خطا: @_searchError
+                                </MudText>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-4 py-2">
+                                    مخاطبی یافت نشد
+                                </MudText>
+                            }
                         </NoItemsTemplate>
                     </MudAutocomplete>
                     </div>
@@ -374,13 +383,24 @@
 
     // ── Contact autocomplete ─────────────────────────────────────────────────
 
+    private string _searchError = "";
+
     private async Task<IEnumerable<HubSpotContactDto>> SearchContacts(
         string value, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(value) || value.Length < 2)
+        if (string.IsNullOrWhiteSpace(value) || value.Length < 1)
             return Enumerable.Empty<HubSpotContactDto>();
-        try { return await HubSpotService.SearchContactsAsync(ApiKey, value, 10); }
-        catch { return Enumerable.Empty<HubSpotContactDto>(); }
+        _searchError = "";
+        try
+        {
+            var results = await HubSpotService.SearchContactsAsync(ApiKey, value, 10);
+            return results;
+        }
+        catch (Exception ex)
+        {
+            _searchError = ex.Message;
+            return Enumerable.Empty<HubSpotContactDto>();
+        }
     }
 
     // ── Products ─────────────────────────────────────────────────────────────
