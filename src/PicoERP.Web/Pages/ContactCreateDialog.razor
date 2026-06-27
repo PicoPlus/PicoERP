@@ -3,6 +3,7 @@
 @inject IHubSpotService HubSpotService
 @inject IZohalService ZohalService
 @inject MudBlazor.ISnackbar Snackbar
+@inject NavigationManager Nav
 
 <MudDialog>
     <TitleContent>
@@ -19,14 +20,18 @@
                                   Label="نام *"
                                   Variant="Variant.Outlined"
                                   Required="true"
-                                  RequiredError="نام الزامی است" />
+                                  RequiredError="نام الزامی است"
+                                  ReadOnly="@_zohalLocked"
+                                  Disabled="@_inquiring" />
                 </MudItem>
                 <MudItem xs="12" sm="6">
                     <MudTextField @bind-Value="_model.LastName"
                                   Label="نام خانوادگی *"
                                   Variant="Variant.Outlined"
                                   Required="true"
-                                  RequiredError="نام خانوادگی الزامی است" />
+                                  RequiredError="نام خانوادگی الزامی است"
+                                  ReadOnly="@_zohalLocked"
+                                  Disabled="@_inquiring" />
                 </MudItem>
                 <MudItem xs="12" sm="6">
                     <div style="display:flex;gap:6px;align-items:flex-start;">
@@ -36,14 +41,16 @@
                                       Placeholder="مثال: ۱۲۳۴۵۶۷۸۹۰"
                                       Error="@(!string.IsNullOrEmpty(_ncodeError))"
                                       ErrorText="@_ncodeError"
+                                      ReadOnly="@_zohalLocked"
+                                      Disabled="@_inquiring"
                                       Style="flex:1;" />
-                        <MudTooltip Text="@(_zohalNeedsBirthDate ? "برای استعلام، تاریخ تولد را هم پر کنید" : "استعلام هویت از ثبت‌احوال (زهل)")">
-                            <MudIconButton Icon="@Icons.Material.Filled.ManageSearch"
-                                           Color="@(_zohalNeedsBirthDate ? Color.Default : Color.Info)"
+                        <MudTooltip Text="@(_zohalNeedsBirthDate ? "برای استعلام، تاریخ تولد را هم پر کنید" : _zohalLocked ? "هویت تأیید شده — قفل شده" : "استعلام هویت از ثبت‌احوال (زهل)")">
+                            <MudIconButton Icon="@(_zohalLocked ? Icons.Material.Filled.VerifiedUser : Icons.Material.Filled.ManageSearch)"
+                                           Color="@(_zohalLocked ? Color.Success : _zohalNeedsBirthDate ? Color.Default : Color.Info)"
                                            Variant="Variant.Outlined"
                                            Size="Size.Medium"
                                            Style="margin-top:4px;flex-shrink:0;"
-                                           Disabled="@(string.IsNullOrWhiteSpace(_model.NCode) || _inquiring)"
+                                           Disabled="@(string.IsNullOrWhiteSpace(_model.NCode) || _inquiring || _zohalLocked)"
                                            OnClick="RunInquiry" />
                         </MudTooltip>
                     </div>
@@ -54,30 +61,37 @@
                                   Variant="Variant.Outlined"
                                   Placeholder="مثال: ۰۹۱۲۱۲۳۴۵۶۷"
                                   Error="@(!string.IsNullOrEmpty(_mobileError))"
-                                  ErrorText="@_mobileError" />
+                                  ErrorText="@_mobileError"
+                                  Disabled="@_inquiring" />
                 </MudItem>
                 <MudItem xs="12" sm="6">
                     <MudTextField @bind-Value="_model.FatherName"
                                   Label="نام پدر"
-                                  Variant="Variant.Outlined" />
+                                  Variant="Variant.Outlined"
+                                  ReadOnly="@_zohalLocked"
+                                  Disabled="@_inquiring" />
                 </MudItem>
                 <MudItem xs="12" sm="6">
                     <MudTextField @bind-Value="_model.BirthDate"
                                   Label="تاریخ تولد"
                                   Variant="Variant.Outlined"
                                   Placeholder="مثال: ۱۳۷۰/۰۱/۰۱"
+                                  ReadOnly="@_zohalLocked"
+                                  Disabled="@_inquiring"
                                   HelperText="@(_zohalNeedsBirthDate ? "⚠ برای استعلام هویت، تاریخ تولد الزامی است" : "")" />
                 </MudItem>
                 <MudItem xs="12" sm="6">
                     <MudTextField @bind-Value="_model.Email"
                                   Label="ایمیل"
                                   Variant="Variant.Outlined"
-                                  InputType="InputType.Email" />
+                                  InputType="InputType.Email"
+                                  Disabled="@_inquiring" />
                 </MudItem>
                 <MudItem xs="12" sm="6">
                     <MudTextField @bind-Value="_model.Company"
                                   Label="شرکت"
-                                  Variant="Variant.Outlined" />
+                                  Variant="Variant.Outlined"
+                                  Disabled="@_inquiring" />
                 </MudItem>
             </MudGrid>
 
@@ -89,16 +103,17 @@
 
             @if (_inquiryResult != null)
             {
-                <MudAlert Severity="@(_inquiryResult.Matched == true ? Severity.Success : Severity.Warning)"
-                          Class="mt-3" Dense="false" Icon="@(_inquiryResult.Matched == true ? Icons.Material.Filled.VerifiedUser : Icons.Material.Filled.GppBad)">
+                <MudAlert Severity="@(_inquiryResult.Matched ? Severity.Success : Severity.Warning)"
+                          Class="mt-3" Dense="false"
+                          Icon="@(_inquiryResult.Matched ? Icons.Material.Filled.VerifiedUser : Icons.Material.Filled.GppBad)">
                     @if (!string.IsNullOrEmpty(_inquiryResult.Error))
                     {
                         <span>@_inquiryResult.Error</span>
                     }
-                    else if (_inquiryResult.Matched == true)
+                    else if (_inquiryResult.Matched)
                     {
                         <div style="display:flex;flex-direction:column;gap:2px;">
-                            <strong>هویت تأیید شد ✓</strong>
+                            <strong>هویت تأیید شد ✓ — فیلدهای هویتی قفل شدند</strong>
                             <span>نام: @_inquiryResult.FirstName @_inquiryResult.LastName</span>
                             <span>نام پدر: @_inquiryResult.FatherName</span>
                             <span>وضعیت حیات: @(_inquiryResult.IsDead == true ? "فوت‌شده ✗" : "زنده ✓")</span>
@@ -118,10 +133,10 @@
         </MudForm>
     </DialogContent>
     <DialogActions>
-        <MudButton OnClick="Cancel" Variant="Variant.Text">انصراف</MudButton>
+        <MudButton OnClick="Cancel" Variant="Variant.Text" Disabled="@_inquiring">انصراف</MudButton>
         <MudButton OnClick="Submit" Variant="Variant.Filled" Color="Color.Primary"
                    StartIcon="@Icons.Material.Filled.Save"
-                   Disabled="@_saving">
+                   Disabled="@(_saving || _inquiring)">
             @(_saving ? "در حال ذخیره..." : "ذخیره مخاطب")
         </MudButton>
     </DialogActions>
@@ -134,11 +149,12 @@
     private MudForm _form = null!;
     private CreateHubSpotContactDto _model = new();
     private bool _saving;
-    private string _ncodeError    = "";
-    private string _mobileError   = "";
-    private string _generalError  = "";
-    private bool   _inquiring;
-    private bool   _zohalNeedsBirthDate;
+    private string _ncodeError   = "";
+    private string _mobileError  = "";
+    private string _generalError = "";
+    private bool _inquiring;
+    private bool _zohalNeedsBirthDate;
+    private bool _zohalLocked;          // true after a successful inquiry — locks identity fields
     private ZohalIdentityResultDto? _inquiryResult;
 
     // ── Zohal identity inquiry ───────────────────────────────────────────────
@@ -147,7 +163,6 @@
     {
         if (string.IsNullOrWhiteSpace(_model.NCode)) return;
 
-        // Zohal requires birth date — show hint and stop if missing
         if (string.IsNullOrWhiteSpace(_model.BirthDate))
         {
             _zohalNeedsBirthDate = true;
@@ -156,21 +171,20 @@
         }
 
         _zohalNeedsBirthDate = false;
-        _inquiring     = true;
-        _inquiryResult = null;
+        _inquiring           = true;
+        _inquiryResult       = null;
+        _zohalLocked         = false;
         StateHasChanged();
 
         _inquiryResult = await ZohalService.InquireAsync(_model.NCode.Trim(), _model.BirthDate.Trim());
 
-        // If matched, auto-fill name fields (only when they are currently empty)
-        if (_inquiryResult.Matched == true)
+        if (_inquiryResult.Matched)
         {
-            if (string.IsNullOrWhiteSpace(_model.FirstName)  && !string.IsNullOrWhiteSpace(_inquiryResult.FirstName))
-                _model.FirstName  = _inquiryResult.FirstName;
-            if (string.IsNullOrWhiteSpace(_model.LastName)   && !string.IsNullOrWhiteSpace(_inquiryResult.LastName))
-                _model.LastName   = _inquiryResult.LastName;
-            if (string.IsNullOrWhiteSpace(_model.FatherName) && !string.IsNullOrWhiteSpace(_inquiryResult.FatherName))
-                _model.FatherName = _inquiryResult.FatherName;
+            // Auto-fill and lock identity fields
+            if (!string.IsNullOrWhiteSpace(_inquiryResult.FirstName))  _model.FirstName  = _inquiryResult.FirstName;
+            if (!string.IsNullOrWhiteSpace(_inquiryResult.LastName))   _model.LastName   = _inquiryResult.LastName;
+            if (!string.IsNullOrWhiteSpace(_inquiryResult.FatherName)) _model.FatherName = _inquiryResult.FatherName;
+            _zohalLocked = true;
         }
 
         _inquiring = false;
@@ -190,7 +204,6 @@
 
         try
         {
-            // Uniqueness checks
             if (!string.IsNullOrWhiteSpace(_model.NCode))
             {
                 var existId = await HubSpotService.FindContactByNcodeAsync(ApiKey, _model.NCode);
@@ -211,10 +224,8 @@
                 }
             }
 
-            // Create in HubSpot
             var created = await HubSpotService.CreateContactAsync(ApiKey, _model);
 
-            // Also save locally
             await HubSpotService.SaveContactLocallyAsync(new HubSpotContactDto
             {
                 Id          = created.Id,
@@ -231,6 +242,8 @@
             });
 
             MudDialog.Close(DialogResult.Ok(created));
+            // Redirect to the new contact's profile page
+            Nav.NavigateTo($"/contact-profile/{created.Id}");
         }
         catch (Exception ex)
         {

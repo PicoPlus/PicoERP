@@ -4,6 +4,7 @@
 @inject ISmsService SmsService
 @inject ISmsLogService SmsLogService
 @inject ISettingsService SettingsService
+@inject IZohalService ZohalService
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @inject NavigationManager Nav
@@ -12,6 +13,7 @@
 @using Microsoft.AspNetCore.Components.Forms
 @using PicoERP.Domain.Entities
 @using PicoERP.Web.Services
+@using PicoERP.Application.DTOs
 
 <PageTitle>پروفایل مخاطب — پیکو ERP</PageTitle>
 
@@ -188,6 +190,48 @@
                             </MudText>
                         </div>
                     }
+
+                    <!-- Zohal inquiry panel -->
+                    <div style="padding:12px 16px;border-top:1px solid var(--mud-palette-divider);">
+                        @if (_zohalLocked)
+                        {
+                            <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0;">
+                                <MudIcon Icon="@Icons.Material.Filled.VerifiedUser" Style="color:#16a34a;font-size:1.1rem;" />
+                                <div style="flex:1;font-size:.8rem;color:#15803d;font-weight:600;">هویت تأیید شد — فیلدهای هویتی قفل شدند</div>
+                                <MudIconButton Icon="@Icons.Material.Filled.LockOpen" Size="Size.Small"
+                                               OnClick="@(() => { _zohalLocked = false; _zohalResult = null; })"
+                                               Title="باز کردن قفل" />
+                            </div>
+                        }
+                        else
+                        {
+                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary" Style="flex:1;">استعلام هویت از ثبت‌احوال (زهل)</MudText>
+                                <MudTooltip Text="@(_zohalNeedsBirthDate ? "تاریخ تولد در پروفایل خالی است" : "استعلام هویت")">
+                                    <MudIconButton Icon="@Icons.Material.Filled.ManageSearch"
+                                                   Color="Color.Info" Variant="Variant.Outlined" Size="Size.Small"
+                                                   Disabled="@(_zohalInquiring || string.IsNullOrWhiteSpace(_contactNCode) || string.IsNullOrWhiteSpace(_contactBirthDate))"
+                                                   OnClick="RunProfileZohalInquiry" />
+                                </MudTooltip>
+                            </div>
+                            @if (_zohalNeedsBirthDate)
+                            {
+                                <MudText Typo="Typo.caption" Style="color:#d97706;">⚠ برای استعلام، تاریخ تولد باید در پروفایل باشد</MudText>
+                            }
+                            @if (_zohalInquiring)
+                            {
+                                <MudProgressLinear Color="Color.Info" Indeterminate="true" Class="mt-2" />
+                            }
+                            @if (_zohalResult != null && !_zohalResult.Matched && string.IsNullOrEmpty(_zohalResult.Error))
+                            {
+                                <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">کد ملی و تاریخ تولد مطابقت ندارند</MudAlert>
+                            }
+                            @if (!string.IsNullOrEmpty(_zohalResult?.Error))
+                            {
+                                <MudAlert Severity="Severity.Error" Dense="true" Class="mt-2">@_zohalResult.Error</MudAlert>
+                            }
+                        }
+                    </div>
                 </MudCard>
 
                 <!-- Quick stats -->
@@ -613,8 +657,37 @@
         _hubContact?.MobilePhone ?? _hubContact?.Phone ??
         _contact?.MobilePhone ?? _contact?.Phone ?? "";
 
+    private string _contactNCode =>
+        _contact?.NCode ?? _hubContact?.NCode ?? "";
+
+    private string _contactBirthDate =>
+        _contact?.BirthDate ?? _hubContact?.BirthDate ?? "";
+
     private string _apiKey => AppState.HubSpotApiKey;
     private bool   _apiConfigured => !string.IsNullOrWhiteSpace(_apiKey);
+
+    // ── Zohal ────────────────────────────────────────────────────────────────
+    private bool _zohalInquiring;
+    private bool _zohalLocked;
+    private bool _zohalNeedsBirthDate;
+    private ZohalIdentityResultDto? _zohalResult;
+
+    private async Task RunProfileZohalInquiry()
+    {
+        if (string.IsNullOrWhiteSpace(_contactNCode)) return;
+        if (string.IsNullOrWhiteSpace(_contactBirthDate))
+        {
+            _zohalNeedsBirthDate = true; StateHasChanged(); return;
+        }
+        _zohalNeedsBirthDate = false;
+        _zohalInquiring = true;
+        _zohalResult    = null;
+        StateHasChanged();
+        _zohalResult = await ZohalService.InquireAsync(_contactNCode.Trim(), _contactBirthDate.Trim());
+        if (_zohalResult.Matched) _zohalLocked = true;
+        _zohalInquiring = false;
+        StateHasChanged();
+    }
 
     private string _contactName =>
         _hubContact != null

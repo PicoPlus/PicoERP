@@ -3,8 +3,11 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.EntityFrameworkCore;
 using PicoERP.Application.DTOs;
 using PicoERP.Application.Interfaces;
+using PicoERP.Domain.Entities;
+using PicoERP.Infrastructure.Persistence;
 
 namespace PicoERP.Infrastructure.Services;
 
@@ -26,10 +29,13 @@ public class ZohalService : IZohalService
         PropertyNameCaseInsensitive = true
     };
 
-    public ZohalService(IHttpClientFactory httpClientFactory, ISettingsService settings)
+    private readonly AppDbContext _db;
+
+    public ZohalService(IHttpClientFactory httpClientFactory, ISettingsService settings, AppDbContext db)
     {
         _httpClientFactory = httpClientFactory;
         _settings          = settings;
+        _db                = db;
     }
 
     public async Task<ZohalIdentityResultDto> InquireAsync(string nationalCode, string birthDate)
@@ -83,7 +89,7 @@ public class ZohalService : IZohalService
         if (data == null)
             return new ZohalIdentityResultDto { Error = "داده‌ای در پاسخ سرویس زهل دریافت نشد." };
 
-        return new ZohalIdentityResultDto
+        var result2 = new ZohalIdentityResultDto
         {
             Matched      = data.Matched,
             FirstName    = data.FirstName,
@@ -93,6 +99,26 @@ public class ZohalService : IZohalService
             IsDead       = data.IsDead,
             NationalCode = data.NationalCode
         };
+
+        // Persist log
+        try
+        {
+            _db.ZohalLogs.Add(new ZohalLog
+            {
+                NationalCode = nationalCode,
+                BirthDate    = birthDate,
+                Matched      = result2.Matched,
+                FirstName    = result2.FirstName,
+                LastName     = result2.LastName,
+                FatherName   = result2.FatherName,
+                IsDead       = result2.IsDead,
+                InquiredAt   = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync();
+        }
+        catch { /* log persistence is best-effort */ }
+
+        return result2;
     }
 
     // ── Private deserialization models ───────────────────────────────────────

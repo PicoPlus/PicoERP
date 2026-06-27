@@ -1,0 +1,113 @@
+@page "/zohal-logs"
+@inject PicoERP.Infrastructure.Persistence.AppDbContext Db
+@inject AppStateService AppState
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+@using PicoERP.Domain.Entities
+@using PicoERP.Web.Services
+
+<PageTitle>لاگ استعلام هویت (زهل) — پیکو ERP</PageTitle>
+
+<div class="pico-page" dir="rtl">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;flex-wrap:wrap;">
+        <MudIcon Icon="@Icons.Material.Filled.ManageSearch" Style="color:#0091AE;font-size:2rem;" />
+        <div style="flex:1;">
+            <MudText Typo="Typo.h4" Class="page-title">لاگ استعلام هویت</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">تاریخچه کلیه استعلام‌های ثبت‌احوال از سرویس زهل</MudText>
+        </div>
+        <MudTextField @bind-Value="_search" Placeholder="جستجو در کد ملی / نام..." Variant="Variant.Outlined"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                      Style="max-width:280px;" Immediate="true" DebounceInterval="200" />
+    </div>
+
+    @if (_loading)
+    {
+        <div style="text-align:center;padding:60px;">
+            <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Large" />
+        </div>
+    }
+    else if (!_logs.Any())
+    {
+        <MudPaper Class="pa-8" Style="text-align:center;color:#9ca3af;border-radius:12px;">
+            <MudIcon Icon="@Icons.Material.Filled.SearchOff" Style="font-size:3rem;color:#d1d5db;" />
+            <MudText Typo="Typo.h6" Class="mt-3">هنوز هیچ استعلامی ثبت نشده</MudText>
+        </MudPaper>
+    }
+    else
+    {
+        <MudTable Items="@Filtered" Dense="true" Hover="true" Striped="true"
+                  Style="border-radius:12px;overflow:hidden;" Elevation="2">
+            <HeaderContent>
+                <MudTh>تاریخ استعلام</MudTh>
+                <MudTh>کد ملی</MudTh>
+                <MudTh>تاریخ تولد</MudTh>
+                <MudTh>نام</MudTh>
+                <MudTh>نام پدر</MudTh>
+                <MudTh>نتیجه</MudTh>
+                <MudTh>وضعیت حیات</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@AppState.FormatDateTime(context.InquiredAt)</MudTd>
+                <MudTd dir="ltr">@context.NationalCode</MudTd>
+                <MudTd>@context.BirthDate</MudTd>
+                <MudTd>@($"{context.FirstName} {context.LastName}".Trim())</MudTd>
+                <MudTd>@context.FatherName</MudTd>
+                <MudTd>
+                    @if (!string.IsNullOrWhiteSpace(context.Error))
+                    {
+                        <MudChip T="string" Color="Color.Error" Size="Size.Small">خطا</MudChip>
+                    }
+                    else if (context.Matched)
+                    {
+                        <MudChip T="string" Color="Color.Success" Size="Size.Small">تطابق دارد ✓</MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Color="Color.Warning" Size="Size.Small">تطابق ندارد</MudChip>
+                    }
+                </MudTd>
+                <MudTd>
+                    @if (context.Matched)
+                    {
+                        @(context.IsDead == true ? "فوت‌شده" : "زنده")
+                    }
+                    else { <span style="color:#9ca3af;">—</span> }
+                </MudTd>
+            </RowTemplate>
+            <PagerContent>
+                <MudTablePager PageSizeOptions="new int[]{20,50,100}" />
+            </PagerContent>
+        </MudTable>
+
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">
+            @_logs.Count استعلام در کل — @_logs.Count(l => l.Matched) تطابق موفق
+        </MudText>
+    }
+</div>
+
+@code {
+    private List<ZohalLog> _logs  = new();
+    private bool           _loading = true;
+    private string         _search  = "";
+
+    private IEnumerable<ZohalLog> Filtered => string.IsNullOrWhiteSpace(_search)
+        ? _logs
+        : _logs.Where(l =>
+            l.NationalCode.Contains(_search) ||
+            ($"{l.FirstName} {l.LastName}").Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+            (l.FatherName ?? "").Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _logs = await Db.ZohalLogs
+                .AsNoTracking()
+                .OrderByDescending(l => l.InquiredAt)
+                .ToListAsync();
+        }
+        catch { }
+        finally { _loading = false; }
+    }
+}

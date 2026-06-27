@@ -26,7 +26,8 @@ public class AppDbContext : DbContext
     public DbSet<BankTransferReceipt> BankTransferReceipts { get; set; }
     public DbSet<BankTransferPayment> BankTransferPayments { get; set; }
     public DbSet<BankStatementTransaction> BankStatementTransactions { get; set; }
-    public DbSet<SmsLog> SmsLogs { get; set; }
+    public DbSet<SmsLog>    SmsLogs    { get; set; }
+    public DbSet<ZohalLog>  ZohalLogs  { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -49,6 +50,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<BankTransferPayment>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<BankStatementTransaction>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<SmsLog>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<ZohalLog>().HasQueryFilter(e => !e.IsDeleted);
 
         // Precision for decimals
         foreach (var property in modelBuilder.Model.GetEntityTypes()
