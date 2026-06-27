@@ -1,0 +1,157 @@
+@page "/employees"
+@inject IEmployeeService EmployeeService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>کارمندان — پیکو ERP</PageTitle>
+
+<div class="pico-page" dir="rtl">
+    <div class="page-header">
+        <div>
+            <MudText Typo="Typo.h4" Class="page-title">مدیریت کارمندان</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">اطلاعات و مدیریت پرسنل</MudText>
+        </div>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd"
+                   OnClick="@(() => OpenDialog(null))">افزودن کارمند</MudButton>
+    </div>
+
+    <!-- Search -->
+    <MudCard Elevation="1" Class="pico-card mb-4">
+        <MudCardContent>
+            <MudGrid Spacing="2">
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_paging.Search" Label="جستجو (نام، نام خانوادگی، کد ملی)" Variant="Variant.Outlined"
+                                  Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+                                  Margin="Margin.Dense" Immediate="true" TextChanged="@(_ => Reload())" />
+                </MudItem>
+            </MudGrid>
+        </MudCardContent>
+    </MudCard>
+
+    <!-- Employee Cards Grid -->
+    @if (_loading)
+    {
+        <MudGrid Spacing="3">
+            @for (int i = 0; i < 6; i++)
+            {
+                <MudItem xs="12" sm="6" md="4">
+                    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="180px" Class="rounded-card" />
+                </MudItem>
+            }
+        </MudGrid>
+    }
+    else if (_result?.Items.Any() == true)
+    {
+        <MudGrid Spacing="3">
+            @foreach (var emp in _result.Items)
+            {
+                <MudItem xs="12" sm="6" md="4">
+                    <MudCard Elevation="2" Class="pico-card employee-card hover-card">
+                        <MudCardContent>
+                            <div class="employee-avatar">
+                                <MudAvatar Color="@GetStatusColor(emp.Status)" Size="Size.Large" Style="font-size:1.5rem; font-weight:700;">
+                                    @emp.FirstName.FirstOrDefault()
+                                </MudAvatar>
+                                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(emp.Status)" Variant="Variant.Filled" Class="status-chip">
+                                    @GetStatusPersian(emp.Status)
+                                </MudChip>
+                            </div>
+                            <MudText Typo="Typo.h6" Class="mt-2">@emp.FullName</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">@emp.Position</MudText>
+                            <MudDivider Class="my-2" />
+                            <div class="employee-info">
+                                <div class="info-row">
+                                    <MudIcon Icon="@Icons.Material.Filled.Phone" Size="Size.Small" Color="Color.Secondary" />
+                                    <span>@emp.PhoneNumber</span>
+                                </div>
+                                <div class="info-row">
+                                    <MudIcon Icon="@Icons.Material.Filled.CalendarMonth" Size="Size.Small" Color="Color.Secondary" />
+                                    <span>استخدام: @AppState.FormatDate(emp.HireDate)</span>
+                                </div>
+                                <div class="info-row">
+                                    <MudIcon Icon="@Icons.Material.Filled.Payments" Size="Size.Small" Color="Color.Secondary" />
+                                    <span>حقوق: @AppState.FormatAmount(emp.BaseSalary)</span>
+                                </div>
+                            </div>
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton Size="Size.Small" Color="Color.Primary" Variant="Variant.Text"
+                                       OnClick="@(() => OpenDialog(emp))">ویرایش</MudButton>
+                            <MudSpacer />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                           OnClick="@(() => DeleteEmployee(emp))" />
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+    else
+    {
+        <div class="empty-state">
+            <MudIcon Icon="@Icons.Material.Filled.PersonOff" Style="font-size:72px; color:#90CAF9;" />
+            <h3>هیچ کارمندی یافت نشد</h3>
+            <p>برای افزودن کارمند کلیک کنید</p>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => OpenDialog(null))">افزودن اولین کارمند</MudButton>
+        </div>
+    }
+</div>
+
+@code {
+    private PagedResult<EmployeeDto>? _result;
+    private PaginationParams _paging = new() { PageSize = 50 };
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        _loading = true;
+        StateHasChanged();
+        _result = await EmployeeService.GetPagedAsync(_paging);
+        _loading = false;
+    }
+
+    private async Task OpenDialog(EmployeeDto? emp)
+    {
+        var parameters = new DialogParameters { ["Employee"] = emp };
+        var dialog = await DialogService.ShowAsync<EmployeeDialog>(
+            emp == null ? "افزودن کارمند جدید" : "ویرایش اطلاعات کارمند",
+            parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        if (!result.Canceled) await Reload();
+    }
+
+    private async Task DeleteEmployee(EmployeeDto emp)
+    {
+        var confirm = await DialogService.ShowMessageBox("حذف کارمند",
+            $"آیا مطمئن هستید که می‌خواهید {emp.FullName} را حذف کنید؟",
+            yesText: "بله، حذف شود", cancelText: "خیر");
+        if (confirm == true)
+        {
+            var result = await EmployeeService.DeleteAsync(emp.Id);
+            if (result.IsSuccess) { Snackbar.Add("کارمند حذف شد", Severity.Success); await Reload(); }
+            else Snackbar.Add(result.Error ?? "خطا", Severity.Error);
+        }
+    }
+
+    private static Color GetStatusColor(EmployeeStatus s) => s switch
+    {
+        EmployeeStatus.Active => Color.Success,
+        EmployeeStatus.Inactive => Color.Default,
+        EmployeeStatus.OnLeave => Color.Warning,
+        EmployeeStatus.Terminated => Color.Error,
+        _ => Color.Default
+    };
+
+    private static string GetStatusPersian(EmployeeStatus s) => s switch
+    {
+        EmployeeStatus.Active => "فعال",
+        EmployeeStatus.Inactive => "غیرفعال",
+        EmployeeStatus.OnLeave => "مرخصی",
+        EmployeeStatus.Terminated => "خاتمه",
+        _ => ""
+    };
+}

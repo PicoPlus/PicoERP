@@ -1,0 +1,148 @@
+@* Premium SVG Line/Bar Chart — fully RTL, Persian labels, animated *@
+<div class="pico-chart-wrap" dir="rtl">
+    @if (IncomeData.Any() || ExpenseData.Any())
+    {
+        var maxVal = (double)Math.Max(
+            IncomeData.Any() ? IncomeData.Max(x => x.Amount) : 0,
+            ExpenseData.Any() ? ExpenseData.Max(x => x.Amount) : 0);
+        if (maxVal == 0) maxVal = 1;
+        int count = Math.Max(IncomeData.Count, ExpenseData.Count);
+        double svgW = 560;
+        double svgH = 180;
+        double padL = 8; double padR = 8; double padT = 16; double padB = 40;
+        double chartW = svgW - padL - padR;
+        double chartH = svgH - padT - padB;
+        double barW = count > 0 ? (chartW / count) * 0.38 : 30;
+        double gap = count > 0 ? chartW / count : 60;
+
+        string IncomePolyline()
+        {
+            var pts = new System.Text.StringBuilder();
+            for (int i = 0; i < IncomeData.Count; i++)
+            {
+                double x = padL + gap * i + gap / 2;
+                double y = padT + chartH - (double)IncomeData[i].Amount / maxVal * chartH;
+                pts.Append($"{x.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)},{y.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)} ");
+            }
+            return pts.ToString().Trim();
+        }
+
+        string ExpensePolyline()
+        {
+            var pts = new System.Text.StringBuilder();
+            for (int i = 0; i < ExpenseData.Count; i++)
+            {
+                double x = padL + gap * i + gap / 2;
+                double y = padT + chartH - (double)ExpenseData[i].Amount / maxVal * chartH;
+                pts.Append($"{x.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)},{y.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)} ");
+            }
+            return pts.ToString().Trim();
+        }
+
+        <svg viewBox="0 0 @svgW @svgH" style="width:100%;height:@(svgH)px;overflow:visible;" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <linearGradient id="incGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#42A5F5" stop-opacity="0.35"/>
+                    <stop offset="100%" stop-color="#42A5F5" stop-opacity="0.02"/>
+                </linearGradient>
+                <linearGradient id="expGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#EF5350" stop-opacity="0.3"/>
+                    <stop offset="100%" stop-color="#EF5350" stop-opacity="0.02"/>
+                </linearGradient>
+            </defs>
+
+            @* Grid lines *@
+            @for (int g = 0; g <= 4; g++)
+            {
+                double gy = padT + chartH / 4 * g;
+                <line x1="@padL" y1="@gy.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)"
+                      x2="@((svgW - padR).ToString("F1", System.Globalization.CultureInfo.InvariantCulture))"
+                      y2="@gy.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)"
+                      stroke="#E3E8EE" stroke-width="1" />
+            }
+
+            @* Bars *@
+            @for (int i = 0; i < count; i++)
+            {
+                double cx = padL + gap * i + gap / 2;
+                if (i < IncomeData.Count)
+                {
+                    double bh = (double)IncomeData[i].Amount / maxVal * chartH;
+                    double by = padT + chartH - bh;
+                    double bx = cx - barW - 1;
+                    <rect x="@bx.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)"
+                          y="@by.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)"
+                          width="@barW.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)"
+                          height="@bh.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)"
+                          fill="#42A5F5" rx="3" opacity="0.85">
+                        <title>درآمد: @AppState.FormatAmount(IncomeData[i].Amount)</title>
+                    </rect>
+                }
+                if (i < ExpenseData.Count)
+                {
+                    double bh = (double)ExpenseData[i].Amount / maxVal * chartH;
+                    double by = padT + chartH - bh;
+                    double bx = cx + 1;
+                    <rect x="@bx.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)"
+                          y="@by.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)"
+                          width="@barW.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)"
+                          height="@bh.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)"
+                          fill="#EF5350" rx="3" opacity="0.8">
+                        <title>هزینه: @AppState.FormatAmount(ExpenseData[i].Amount)</title>
+                    </rect>
+                }
+            }
+
+            @* Income trend line *@
+            @if (IncomeData.Count > 1)
+            {
+                <polyline points="@IncomePolyline()" fill="none" stroke="#1565C0" stroke-width="2.5"
+                          stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>
+                @for (int i = 0; i < IncomeData.Count; i++)
+                {
+                    double x = padL + gap * i + gap / 2;
+                    double y = padT + chartH - (double)IncomeData[i].Amount / maxVal * chartH;
+                    <circle cx="@x.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)"
+                            cy="@y.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)"
+                            r="4" fill="#fff" stroke="#1565C0" stroke-width="2.5"/>
+                }
+            }
+
+            @* Expense trend line *@
+            @if (ExpenseData.Count > 1)
+            {
+                <polyline points="@ExpensePolyline()" fill="none" stroke="#C62828" stroke-width="2"
+                          stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="5,3" opacity="0.8"/>
+            }
+
+            @* X-axis labels *@
+            @for (int i = 0; i < count; i++)
+            {
+                double lx = padL + gap * i + gap / 2;
+                double ly = padT + chartH + 18;
+                string lbl = i < IncomeData.Count ? IncomeData[i].Month : "";
+                string lxStr = lx.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
+                string lyStr = ly.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
+                @((MarkupString)$"<text x=\"{lxStr}\" y=\"{lyStr}\" text-anchor=\"middle\" font-size=\"10\" fill=\"#5A6374\" font-family=\"Vazirmatn,Tahoma,sans-serif\">{lbl}</text>")
+            }
+        </svg>
+
+        <div class="chart-legend-row">
+            <span class="legend-dot" style="background:#1565C0;"></span><span>درآمد</span>
+            <span class="legend-dot" style="background:#C62828; margin-right:16px;"></span><span>هزینه</span>
+        </div>
+    }
+    else
+    {
+        <div class="empty-state-sm">
+            <MudIcon Icon="@Icons.Material.Filled.BarChart" />
+            <span>داده‌ای برای نمایش وجود ندارد</span>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public List<MonthlyChartDto> IncomeData { get; set; } = new();
+    [Parameter] public List<MonthlyChartDto> ExpenseData { get; set; } = new();
+    [Inject] AppStateService AppState { get; set; } = default!;
+}

@@ -1,0 +1,75 @@
+@inject IFinancialAccountService AccountService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent><MudText Typo="Typo.h6">@(Account == null ? "افزودن حساب مالی" : "ویرایش حساب")</MudText></TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2" dir="rtl">
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_dto.Name" Label="نام حساب *" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudSelect @bind-Value="_dto.Type" Label="نوع حساب *" Variant="Variant.Outlined">
+                    <MudSelectItem Value="@AccountType.Cash">صندوق</MudSelectItem>
+                    <MudSelectItem Value="@AccountType.Bank">بانک</MudSelectItem>
+                    <MudSelectItem Value="@AccountType.CardReader">کارتخوان</MudSelectItem>
+                    <MudSelectItem Value="@AccountType.Wallet">کیف پول</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_dto.BankName" Label="نام بانک" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_dto.AccountNumber" Label="شماره حساب" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_dto.CardNumber" Label="شماره کارت" Variant="Variant.Outlined" MaxLength="19" />
+            </MudItem>
+            @if (Account == null)
+            {
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="_dto.OpeningBalance" Label="موجودی اولیه" Variant="Variant.Outlined" Min="0" />
+                </MudItem>
+            }
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_dto.Description" Label="توضیحات" Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Outlined">انصراف</MudButton>
+        <MudButton OnClick="Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@_loading">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public FinancialAccountDto? Account { get; set; }
+    private FinancialAccountDto _dto = new();
+    private bool _loading;
+
+    protected override void OnInitialized()
+    {
+        if (Account != null) _dto = new FinancialAccountDto
+        {
+            Id = Account.Id, Name = Account.Name, Type = Account.Type,
+            BankName = Account.BankName, AccountNumber = Account.AccountNumber,
+            CardNumber = Account.CardNumber, Description = Account.Description,
+            OpeningBalance = Account.OpeningBalance
+        };
+    }
+
+    private async Task Submit()
+    {
+        if (string.IsNullOrWhiteSpace(_dto.Name)) { Snackbar.Add("نام حساب اجباری است", Severity.Warning); return; }
+        _loading = true;
+        try
+        {
+            var result = Account == null ? await AccountService.CreateAsync(_dto) : await AccountService.UpdateAsync(_dto);
+            if (result.IsSuccess) { Snackbar.Add(Account == null ? "حساب اضافه شد" : "به‌روزرسانی شد", Severity.Success); MudDialog.Close(DialogResult.Ok(true)); }
+            else Snackbar.Add(result.Error ?? "خطا", Severity.Error);
+        }
+        finally { _loading = false; }
+    }
+    private void Cancel() => MudDialog.Cancel();
+}

@@ -1,0 +1,97 @@
+@page "/"
+@namespace PicoERP.Web.Pages
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="پیکو ERP — سیستم مدیریت کافه نت" />
+    <meta name="theme-color" content="#1565C0" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="پیکو ERP" />
+    <title>پیکو ERP</title>
+    <base href="/" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="alternate icon" href="/favicon.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" />
+    <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
+    <link href="css/picoerp.css" rel="stylesheet" />
+</head>
+<body>
+    <component type="typeof(App)" render-mode="Server" />
+    <div id="blazor-error-ui" dir="rtl">
+        <span>خطایی رخ داد. لطفاً صفحه را بارگذاری مجدد کنید.</span>
+        <a href="" class="reload">بارگذاری مجدد</a>
+        <a class="dismiss">✕</a>
+    </div>
+    <script src="_framework/blazor.server.js"></script>
+    <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+    <script>
+    // ── VAPID public key (must match Push:PublicKey in appsettings.json) ──────
+    const VAPID_PUBLIC_KEY = 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U';
+
+    function urlBase64ToUint8Array(base64String) {
+        const padding = '='.repeat((4 - base64String.length % 4) % 4);
+        const base64  = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+        const raw     = window.atob(base64);
+        return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+    }
+
+    async function registerPush() {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+        try {
+            const reg = await navigator.serviceWorker.ready;
+            let sub = await reg.pushManager.getSubscription();
+            if (!sub) {
+                sub = await reg.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+                });
+            }
+            const key  = sub.getKey('p256dh');
+            const auth = sub.getKey('auth');
+            await fetch('/api/push/subscribe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    endpoint: sub.endpoint,
+                    p256dh:   key  ? btoa(String.fromCharCode(...new Uint8Array(key)))  : '',
+                    auth:     auth ? btoa(String.fromCharCode(...new Uint8Array(auth))) : ''
+                })
+            });
+        } catch (e) { console.warn('Push registration failed:', e); }
+    }
+
+    // ── Service Worker registration ───────────────────────────────────────────
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', async () => {
+            try {
+                const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+                console.log('[PicoERP] SW registered:', reg.scope);
+
+                // Request notification permission, then subscribe to push
+                if ('Notification' in window && Notification.permission === 'default') {
+                    const perm = await Notification.requestPermission();
+                    if (perm === 'granted') await registerPush();
+                } else if ('Notification' in window && Notification.permission === 'granted') {
+                    await registerPush();
+                }
+            } catch (e) { console.warn('[PicoERP] SW registration failed:', e); }
+        });
+    }
+
+    // Blazor interop: call from C# to send a local notification
+    window.picoNotify = function(title, body, url) {
+        if (Notification.permission === 'granted') {
+            const n = new Notification(title, { body, icon: '/icon-192.png', dir: 'rtl' });
+            n.onclick = () => { window.focus(); if (url) window.location.href = url; };
+        }
+    };
+    </script>
+</body>
+</html>

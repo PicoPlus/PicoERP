@@ -1,0 +1,101 @@
+@inject IBankTransferService BankTransferService
+@inject IFinancialAccountService AccountService
+@inject ISnackbar Snackbar
+@inject AppStateService AppState
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Send" Class="ml-2" />افزودن پرداخت
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
+            مانده رسید <strong>@Receipt.PayerName</strong>:
+            <strong>@AppState.FormatAmount(Receipt.Remaining)</strong> تومان
+        </MudAlert>
+        <MudGrid Spacing="2" dir="rtl">
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_dto.RecipientName" Label="گیرنده *" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_dto.TransactionId" Label="شناسه تراکنش" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField @bind-Value="_dto.Amount" Label="مبلغ *" Variant="Variant.Outlined" Min="1"
+                                 Adornment="Adornment.End" AdornmentText="تومان" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect @bind-Value="_dto.FinancialAccountId" Label="از حساب" Variant="Variant.Outlined" T="int?" Clearable="true">
+                    @foreach (var acc in _accounts)
+                    {
+                        <MudSelectItem Value="@((int?)acc.Id)">@acc.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_dto.Purpose" Label="هدف / توضیح پرداخت *" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker @bind-Date="_selectedDate" Label="تاریخ" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTimePicker @bind-Time="_selectedTime" Label="ساعت" Variant="Variant.Outlined" AmPm="false" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Outlined">انصراف</MudButton>
+        <MudButton OnClick="Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_saving">
+            @if (_saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="ml-1" />
+            }
+            ذخیره
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public BankTransferReceiptDto Receipt { get; set; } = default!;
+    [Parameter] public List<FinancialAccountDto> Accounts { get; set; } = new();
+    [Parameter] public string Username { get; set; } = "system";
+
+    private CreateBankTransferPaymentDto _dto = new();
+    private DateTime? _selectedDate = DateTime.Now;
+    private TimeSpan? _selectedTime = DateTime.Now.TimeOfDay;
+    private bool _saving;
+    private List<FinancialAccountDto> _accounts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _accounts = Accounts.Any() ? Accounts : await AccountService.GetAllAsync();
+        _dto.ReceiptId = Receipt.Id;
+    }
+
+    private async Task Submit()
+    {
+        if (string.IsNullOrWhiteSpace(_dto.RecipientName) || _dto.Amount <= 0)
+        {
+            Snackbar.Add("گیرنده و مبلغ اجباری هستند", Severity.Warning);
+            return;
+        }
+        var d = _selectedDate ?? DateTime.Now;
+        _dto.Date = d.Date + (_selectedTime ?? DateTime.Now.TimeOfDay);
+        _saving = true;
+        var result = await BankTransferService.AddPaymentAsync(_dto, Username);
+        _saving = false;
+        if (result.IsSuccess)
+        {
+            Snackbar.Add("پرداخت ثبت شد", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        else
+        {
+            Snackbar.Add(result.Error ?? "خطا", Severity.Error);
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

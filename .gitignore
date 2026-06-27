@@ -1,0 +1,23 @@
+﻿# Build outputs
+bin/
+obj/
+publish_output/
+
+# VS / Rider
+.vs/
+.idea/
+*.user
+*.suo
+
+# Logs & DB (runtime data — never commit)
+logs/
+*.log
+src/PicoERP.Web/Data/
+src/PicoERP.Web/logs/
+*.db
+*.db-shm
+*.db-wal
+
+# OS
+Thumbs.db
+.DS_Store

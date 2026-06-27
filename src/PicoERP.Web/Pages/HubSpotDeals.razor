@@ -1,0 +1,365 @@
+@page "/deals"
+@inject AppStateService AppState
+@inject IHubSpotService HubSpotService
+@inject IIncomeService IncomeService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Nav
+@using PicoERP.Web.Services
+
+<PageTitle>دیل‌های CRM — پیکو ERP</PageTitle>
+
+<div class="pico-page" dir="rtl">
+    <div class="page-header">
+        <div>
+            <MudText Typo="Typo.h4" Class="page-title">دیل‌های CRM</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                مدیریت دیل‌های هاب‌اسپات — ایجاد، ویرایش و حذف
+            </MudText>
+        </div>
+        <div class="header-actions">
+            <MudButton Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Filled.Refresh"
+                       OnClick="FetchDeals"
+                       Disabled="@(_loading || !_apiConfigured)"
+                       Class="no-print ml-2">
+                @(_loading ? "در حال دریافت..." : "بروزرسانی")
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="OpenCreateDialog"
+                       Disabled="@(!_apiConfigured)"
+                       Class="no-print">
+                دیل جدید
+            </MudButton>
+        </div>
+    </div>
+
+    @if (!_apiConfigured)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4">
+            کلید API هاب‌اسپات تنظیم نشده.
+            <MudLink Href="/settings" Color="Color.Warning">رفتن به تنظیمات</MudLink>
+        </MudAlert>
+    }
+
+    <!-- Filter bar -->
+    <MudCard Elevation="1" Class="pico-card mb-4">
+        <MudCardContent>
+            <MudGrid Spacing="2" AlignItems="AlignItems.Center">
+                <MudItem xs="12" sm="4">
+                    <MudDatePicker @bind-Date="_dealFrom"
+                                   Label="از تاریخ بستن"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense"
+                                   Clearable="true" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudDatePicker @bind-Date="_dealTo"
+                                   Label="تا تاریخ بستن"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense"
+                                   Clearable="true" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField @bind-Value="_search"
+                                  Label="جستجو در دیل‌ها"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  Adornment="Adornment.End"
+                                  AdornmentIcon="@Icons.Material.Filled.Search"
+                                  Immediate="true"
+                                  TextChanged="@(_ => { _page = 1; StateHasChanged(); })" />
+                </MudItem>
+            </MudGrid>
+        </MudCardContent>
+    </MudCard>
+
+    <!-- Deals table -->
+    <MudCard Elevation="2" Class="pico-card">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h6">
+                    <MudIcon Icon="@Icons.Material.Filled.Handshake" Style="vertical-align:middle; margin-left:6px;" />
+                    دیل‌ها (@_filtered.Count() مورد)
+                </MudText>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent Class="pa-0">
+            @if (_loading)
+            {
+                <div class="loading-center">
+                    <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+                </div>
+            }
+            else if (!_filtered.Any())
+            {
+                <div class="empty-state-sm">
+                    <MudIcon Icon="@Icons.Material.Filled.SearchOff" />
+                    <span>@(_deals == null ? "دکمه بروزرسانی را بزنید تا دیل‌ها بارگذاری شوند" : "هیچ دیلی یافت نشد")</span>
+                </div>
+            }
+            else
+            {
+                <MudTable T="HubSpotDealDto" Items="_paged" Dense="true" Hover="true" Striped="true"
+                          Breakpoint="Breakpoint.Sm"
+                          OnRowClick="@(e => Nav.NavigateTo($"/deal/{e.Item.Id}"))">
+                    <HeaderContent>
+                        <MudTh>نام دیل</MudTh>
+                        <MudTh>مبلغ</MudTh>
+                        <MudTh>مرحله</MudTh>
+                        <MudTh>تاریخ بستن</MudTh>
+                        <MudTh>مخاطب</MudTh>
+                        <MudTh>ایجاد</MudTh>
+                        <MudTh></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd style="cursor:pointer;">
+                            <MudText Typo="Typo.body2" Style="font-weight:600;">
+                                @context.DealName
+                            </MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" dir="ltr">
+                                ID: @context.Id
+                            </MudText>
+                        </MudTd>
+                        <MudTd>
+                            <span class="amount-positive">@AppState.FormatAmount(context.Amount)</span>
+                            @if (!string.IsNullOrWhiteSpace(context.Currency) && context.Currency != "IRR")
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary"> (@context.Currency)</MudText>
+                            }
+                        </MudTd>
+                        <MudTd>
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
+                                     Color="@GetStageColor(context.Stage)">
+                                @(GetStageLabel(context.Stage))
+                            </MudChip>
+                        </MudTd>
+                        <MudTd>
+                            <MudText Typo="Typo.caption">
+                                @(context.CloseDate.HasValue ? AppState.FormatDate(context.CloseDate.Value) : "—")
+                            </MudText>
+                        </MudTd>
+                        <MudTd>
+                            @if (!string.IsNullOrWhiteSpace(context.AssociatedContactId))
+                            {
+                                <MudLink OnClick="@(() => Nav.NavigateTo($"/contact-profile/{context.AssociatedContactId}"))"
+                                         Style="cursor:pointer;">
+                                    @($"{context.ContactFirstName} {context.ContactLastName}".Trim())
+                                </MudLink>
+                            }
+                            else
+                            {
+                                <span>—</span>
+                            }
+                        </MudTd>
+                        <MudTd>
+                            <MudText Typo="Typo.caption">
+                                @(context.CreateDate.HasValue ? AppState.FormatDate(context.CreateDate.Value) : "—")
+                            </MudText>
+                        </MudTd>
+                        <MudTd>
+                            <MudTooltip Text="مشاهده جزئیات">
+                                <MudIconButton Icon="@Icons.Material.Filled.OpenInNew"
+                                               Size="Size.Small" Color="Color.Primary"
+                                               OnClick="@(() => Nav.NavigateTo($"/deal/{context.Id}"))" />
+                            </MudTooltip>
+                            <MudTooltip Text="ثبت به عنوان درآمد">
+                                <MudIconButton Icon="@Icons.Material.Filled.AddCard"
+                                               Size="Size.Small" Color="Color.Success"
+                                               OnClick="@(() => OpenAddToIncomeDialog(context))" />
+                            </MudTooltip>
+                            <MudTooltip Text="ویرایش">
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                               Size="Size.Small" Color="Color.Default"
+                                               OnClick="@(() => OpenEditDialog(context))" />
+                            </MudTooltip>
+                            <MudTooltip Text="حذف">
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                               Size="Size.Small" Color="Color.Error"
+                                               OnClick="@(() => DeleteDeal(context))" />
+                            </MudTooltip>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </MudCardContent>
+
+        @if (_totalPages > 1)
+        {
+            <MudCardActions Class="justify-center pa-3">
+                <MudPagination Count="@_totalPages" Selected="@_page"
+                               Color="Color.Primary"
+                               SelectedChanged="@(v => { _page = v; StateHasChanged(); })" />
+            </MudCardActions>
+        }
+    </MudCard>
+</div>
+
+@code {
+    private List<HubSpotDealDto>? _deals;
+    private List<HubSpotDealStageDto> _stages = new();
+    private bool _loading;
+    private DateTime? _dealFrom;
+    private DateTime? _dealTo;
+    private string _search = "";
+
+    // Pagination
+    private int _page     = 1;
+    private const int PageSize = 25;
+
+    private string _apiKey => AppState.HubSpotApiKey;
+    private bool   _apiConfigured => !string.IsNullOrWhiteSpace(_apiKey);
+
+    private IEnumerable<HubSpotDealDto> _filtered =>
+        _deals == null ? Enumerable.Empty<HubSpotDealDto>() :
+        string.IsNullOrWhiteSpace(_search) ? _deals :
+        _deals.Where(d =>
+            d.DealName.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+            (d.ContactFirstName?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (d.ContactLastName?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            d.Id.Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+    private IEnumerable<HubSpotDealDto> _paged =>
+        _filtered.Skip((_page - 1) * PageSize).Take(PageSize);
+
+    private int _totalPages =>
+        (int)Math.Ceiling(_filtered.Count() / (double)PageSize);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrWhiteSpace(AppState.HubSpotApiKey))
+            AppState.HubSpotApiKey = await HubSpotService.GetApiKeyAsync() ?? "";
+
+        if (_apiConfigured)
+        {
+            await FetchDeals();
+            try { _stages = await HubSpotService.GetDealStagesAsync(_apiKey); }
+            catch { _stages = new(); }
+        }
+    }
+
+    private async Task FetchDeals()
+    {
+        if (!_apiConfigured) return;
+        _loading = true;
+        _page = 1;
+        try
+        {
+            _deals = await HubSpotService.GetDealsAsync(_apiKey, _dealFrom, _dealTo, 200);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در دریافت دیل‌ها: {ex.Message}", Severity.Error);
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters { ["ApiKey"] = _apiKey };
+        var dialog = await DialogService.ShowAsync<DealCreateDialog>(
+            "ایجاد دیل جدید", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            Snackbar.Add("دیل با موفقیت ایجاد شد ✓", Severity.Success);
+            await FetchDeals();
+        }
+    }
+
+    private async Task OpenEditDialog(HubSpotDealDto deal)
+    {
+        var parameters = new DialogParameters
+        {
+            ["ApiKey"]       = _apiKey,
+            ["IsEdit"]       = true,
+            ["ExistingDeal"] = deal
+        };
+        var dialog = await DialogService.ShowAsync<DealCreateDialog>(
+            "ویرایش دیل", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            Snackbar.Add("دیل ویرایش شد ✓", Severity.Success);
+            await FetchDeals();
+        }
+    }
+
+    private async Task OpenAddToIncomeDialog(HubSpotDealDto deal)
+    {
+        // Build a PendingDeal-like object from the live HubSpotDealDto
+        var pending = new PicoERP.Domain.Entities.PendingDeal
+        {
+            HubSpotDealId = deal.Id,
+            DealName      = deal.DealName,
+            Amount        = deal.Amount,
+            Currency      = deal.Currency,
+            Stage         = deal.Stage,
+            ContactName   = $"{deal.ContactFirstName} {deal.ContactLastName}".Trim()
+        };
+
+        var categories = await IncomeService.GetCategoriesAsync();
+        var parameters = new DialogParameters
+        {
+            ["Deal"]       = pending,
+            ["Categories"] = categories
+        };
+        var dialog = await DialogService.ShowAsync<HubSpotApproveDialog>(
+            "ثبت دیل به عنوان درآمد", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: CreateIncomeDto dto })
+        {
+            try
+            {
+                var res = await IncomeService.CreateAsync(dto,
+                    AppState.CurrentUser?.DisplayName ?? "hubspot");
+                if (res.IsSuccess)
+                    Snackbar.Add("درآمد با موفقیت ثبت شد ✓", Severity.Success);
+                else
+                    Snackbar.Add(res.Error ?? "خطا", Severity.Error);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"خطا: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task DeleteDeal(HubSpotDealDto deal)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "حذف دیل",
+            $"آیا دیل «{deal.DealName}» حذف شود؟ این عملیات از هاب‌اسپات نیز حذف می‌کند.",
+            yesText: "بله، حذف شود", cancelText: "خیر");
+        if (confirm != true) return;
+        try
+        {
+            await HubSpotService.DeleteDealAsync(_apiKey, deal.Id);
+            Snackbar.Add("دیل حذف شد", Severity.Info);
+            await FetchDeals();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در حذف: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private string GetStageLabel(string? stageId)
+    {
+        if (string.IsNullOrWhiteSpace(stageId)) return "—";
+        var found = _stages.FirstOrDefault(s => s.Id == stageId);
+        return found?.Label ?? stageId;
+    }
+
+    private Color GetStageColor(string? stageId) => stageId switch
+    {
+        "closedwon"  => Color.Success,
+        "closedlost" => Color.Error,
+        "contractsent" => Color.Warning,
+        _ => Color.Primary
+    };
+}

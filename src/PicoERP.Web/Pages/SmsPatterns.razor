@@ -1,0 +1,419 @@
+@page "/sms/patterns"
+@inject AppStateService AppState
+@inject ISmsService SmsService
+@inject ISettingsService SettingsService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>مدیریت پترن‌ها — پیکو ERP</PageTitle>
+
+<div class="pico-page" dir="rtl">
+
+    <div class="page-header">
+        <MudText Typo="Typo.h4" Class="page-title">مدیریت پترن‌های پیامک</MudText>
+        <div style="display:flex;gap:8px;">
+            <MudButton Variant="Variant.Outlined" Color="Color.Default"
+                       StartIcon="@Icons.Material.Filled.Sms"
+                       Href="/sms">
+                بازگشت به پیامک
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="@(() => OpenPatternDialog(null))">
+                پترن جدید
+            </MudButton>
+        </div>
+    </div>
+
+    @if (!_apiConfigured)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4">
+            کلید API پیامک تنظیم نشده است. لطفاً از صفحه تنظیمات کلید API را وارد کنید.
+        </MudAlert>
+    }
+
+    @if (_loading)
+    {
+        <div class="loading-center" style="height:300px;">
+            <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Large" />
+        </div>
+    }
+    else if (!_patterns.Any())
+    {
+        <div class="empty-state" style="padding:60px;text-align:center;">
+            <MudIcon Icon="@Icons.Material.Outlined.Message" Style="font-size:4rem;color:#d1d5db;" />
+            <MudText Typo="Typo.h6" Color="Color.Secondary" Class="mt-3">هیچ پترنی یافت نشد</MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-3"
+                       StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="@(() => OpenPatternDialog(null))">
+                اولین پترن را بسازید
+            </MudButton>
+        </div>
+    }
+    else
+    {
+        <MudGrid Spacing="3">
+            @foreach (var p in _patterns)
+            {
+                <MudItem xs="12" sm="6" md="4">
+                    <MudCard Elevation="2" Class="pico-card" Style="height:100%;display:flex;flex-direction:column;">
+                        <MudCardHeader Style="padding-bottom:0;">
+                            <CardHeaderContent>
+                                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
+                                             Color="@GetStatusColor(p.PatternStatus)"
+                                             Style="height:22px;font-size:0.72rem;">
+                                        @(p.PatternStatusFa ?? p.PatternStatus)
+                                    </MudChip>
+                                    @if (!string.IsNullOrWhiteSpace(p.Title))
+                                    {
+                                        <MudText Typo="Typo.subtitle2" Style="font-weight:700;">@p.Title</MudText>
+                                    }
+                                </div>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1" dir="ltr">
+                                    کد: @p.PatternCode
+                                </MudText>
+                            </CardHeaderContent>
+                            <CardHeaderActions>
+                                <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" AnchorOrigin="Origin.BottomRight">
+                                    <MudMenuItem OnClick="@(() => ViewPatternDetail(p))">
+                                        <MudIcon Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Class="ml-1" /> مشاهده
+                                    </MudMenuItem>
+                                    <MudMenuItem OnClick="@(() => OpenPatternDialog(p))">
+                                        <MudIcon Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Class="ml-1" /> ویرایش
+                                    </MudMenuItem>
+                                    <MudMenuItem OnClick="@(() => ConfirmDelete(p))" Style="color:var(--mud-palette-error);">
+                                        <MudIcon Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Class="ml-1" /> حذف
+                                    </MudMenuItem>
+                                </MudMenu>
+                            </CardHeaderActions>
+                        </MudCardHeader>
+                        <MudCardContent Style="flex:1;padding-top:8px;">
+                            <MudText Typo="Typo.body2" Style="white-space:pre-wrap;overflow:hidden;text-overflow:ellipsis;max-height:72px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;">
+                                @p.PatternMessage
+                            </MudText>
+                            @if (p.Variable.Any())
+                            {
+                                <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;">
+                                    @foreach (var v in p.Variable)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info" Style="height:20px;font-size:0.68rem;">
+                                            @p.Delimiter@v.Name@p.Delimiter
+                                        </MudChip>
+                                    }
+                                </div>
+                            }
+                        </MudCardContent>
+                        @if (p.UpdatedAt.HasValue)
+                        {
+                            <MudCardContent Style="padding-top:0;padding-bottom:8px;">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary" dir="ltr">
+                                    @p.UpdatedAt.Value.ToLocalTime().ToString("yyyy/MM/dd")
+                                </MudText>
+                            </MudCardContent>
+                        }
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+
+    <!-- Pattern Detail Drawer -->
+    @if (_detailPattern != null)
+    {
+        <MudOverlay @bind-Visible="_showDetail" DarkBackground="true" ZIndex="200" AutoClose="true" />
+        @if (_showDetail)
+        {
+            <div style="position:fixed;top:0;left:0;width:400px;height:100vh;z-index:201;background:var(--mud-palette-surface);box-shadow:4px 0 24px rgba(0,0,0,0.15);overflow-y:auto;padding:24px;" dir="rtl">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+                    <MudText Typo="Typo.h6">جزئیات پترن</MudText>
+                    <MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="@(() => _showDetail = false)" />
+                </div>
+
+                <MudDivider Class="mb-4" />
+
+                <div style="margin-bottom:12px;">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">کد پترن</MudText>
+                    <MudText Typo="Typo.body1" Style="font-weight:700;" dir="ltr">@_detailPattern.PatternCode</MudText>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(_detailPattern.Title))
+                {
+                    <div style="margin-bottom:12px;">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">عنوان</MudText>
+                        <MudText Typo="Typo.body1">@_detailPattern.Title</MudText>
+                    </div>
+                }
+                <div style="margin-bottom:12px;">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">وضعیت</MudText>
+                    <div>
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
+                                 Color="@GetStatusColor(_detailPattern.PatternStatus)">
+                            @(_detailPattern.PatternStatusFa ?? _detailPattern.PatternStatus)
+                        </MudChip>
+                    </div>
+                </div>
+                <div style="margin-bottom:12px;">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">متن پترن</MudText>
+                    <MudPaper Elevation="0" Style="background:#f8f9fa;border-radius:8px;padding:12px;border:1px solid #e9ecef;margin-top:4px;">
+                        <MudText Typo="Typo.body2" Style="white-space:pre-wrap;direction:rtl;">@_detailPattern.PatternMessage</MudText>
+                    </MudPaper>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(_detailPattern.PatternDescription))
+                {
+                    <div style="margin-bottom:12px;">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">توضیحات</MudText>
+                        <MudText Typo="Typo.body2">@_detailPattern.PatternDescription</MudText>
+                    </div>
+                }
+                @if (_detailPattern.Variable.Any())
+                {
+                    <div style="margin-bottom:12px;">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">متغیرها</MudText>
+                        <MudTable Items="_detailPattern.Variable" Dense="true" Elevation="0" Striped="true">
+                            <HeaderContent>
+                                <MudTh>نام</MudTh><MudTh>نوع</MudTh><MudTh>طول</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd dir="ltr">@context.Name</MudTd>
+                                <MudTd>@context.Type</MudTd>
+                                <MudTd>@context.Len</MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    </div>
+                }
+
+                <MudDivider Class="my-4" />
+
+                <div style="display:flex;gap:8px;">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                               OnClick="@(() => { _showDetail = false; OpenPatternDialog(_detailPattern); })">
+                        ویرایش
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" FullWidth="true"
+                               OnClick="@(() => { _showDetail = false; ConfirmDelete(_detailPattern); })">
+                        حذف
+                    </MudButton>
+                </div>
+            </div>
+        }
+    }
+
+    <!-- Create / Edit Dialog -->
+    <MudDialog IsVisible="_showDialog" IsVisibleChanged="@((bool v) => _showDialog = v)" Options="_dialogOpts">
+        <TitleContent>
+            <MudText Typo="Typo.h6">@(_editPattern == null ? "پترن جدید" : "ویرایش پترن")</MudText>
+        </TitleContent>
+        <DialogContent>
+            <MudGrid Spacing="2" dir="rtl">
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_form.Title"
+                                  Label="عنوان (اختیاری)"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_form.Description"
+                                  Label="توضیحات *"
+                                  Variant="Variant.Outlined"
+                                  Required="true" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_form.Message"
+                                  Label="متن پترن *"
+                                  Variant="Variant.Outlined"
+                                  Lines="3" AutoGrow="true"
+                                  Required="true"
+                                  HelperText="از %variableName% برای متغیرها استفاده کنید" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_form.Website"
+                                  Label="وب‌سایت (اختیاری)"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+
+                <!-- Variables -->
+                <MudItem xs="12">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                        <MudText Typo="Typo.subtitle2">متغیرها</MudText>
+                        <MudButton Size="Size.Small" Variant="Variant.Outlined"
+                                   StartIcon="@Icons.Material.Filled.Add"
+                                   OnClick="AddVariable">
+                            افزودن
+                        </MudButton>
+                    </div>
+
+                    @for (int i = 0; i < _form.Variable.Count; i++)
+                    {
+                        var idx = i;
+                        <div style="display:flex;gap:8px;margin-bottom:8px;align-items:flex-end;">
+                            <MudTextField Value="@_form.Variable[idx].Name"
+                                          ValueChanged="@((string v) => _form.Variable[idx].Name = v)"
+                                          Label="نام متغیر"
+                                          Variant="Variant.Outlined"
+                                          Style="flex:1;" />
+                            <MudSelect Value="@_form.Variable[idx].Type"
+                                       ValueChanged="@((string v) => _form.Variable[idx].Type = v)"
+                                       Label="نوع"
+                                       Variant="Variant.Outlined"
+                                       Style="width:110px;"
+                                       AnchorOrigin="Origin.BottomLeft">
+                                <MudSelectItem Value="@("string")">string</MudSelectItem>
+                                <MudSelectItem Value="@("integer")">integer</MudSelectItem>
+                            </MudSelect>
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                           Color="Color.Error"
+                                           Size="Size.Small"
+                                           OnClick="@(() => _form.Variable.RemoveAt(idx))" />
+                        </div>
+                    }
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudSwitch @bind-Value="_form.IsShare" Label="اشتراک‌گذاری با زیرکاربران" Color="Color.Primary" />
+                </MudItem>
+            </MudGrid>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showDialog = false)" Variant="Variant.Text">انصراف</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SavePattern"
+                       Disabled="@_saving">
+                @(_saving ? "در حال ذخیره..." : (_editPattern == null ? "ایجاد" : "ذخیره"))
+            </MudButton>
+        </DialogActions>
+    </MudDialog>
+
+</div>
+
+@code {
+    private List<IpPanelPatternDto> _patterns = new();
+    private bool _loading;
+
+    // Detail drawer
+    private IpPanelPatternDto? _detailPattern;
+    private bool _showDetail;
+
+    // Create/Edit dialog
+    private IpPanelPatternDto? _editPattern;
+    private bool _showDialog;
+    private bool _saving;
+    private CreatePatternDto _form = new();
+    private readonly DialogOptions _dialogOpts = new() { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
+
+    private bool _apiConfigured => !string.IsNullOrWhiteSpace(AppState.SmsApiKey);
+    private string _apiKey => AppState.SmsApiKey;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrWhiteSpace(AppState.SmsApiKey))
+            AppState.SmsApiKey = await SettingsService.GetAsync("Sms:ApiKey") ?? "";
+        await LoadPatternsAsync();
+    }
+
+    private async Task LoadPatternsAsync()
+    {
+        if (!_apiConfigured) return;
+        _loading = true;
+        try { _patterns = await SmsService.GetPatternsAsync(_apiKey, 1, 100); }
+        catch { _patterns = new(); }
+        finally { _loading = false; StateHasChanged(); }
+    }
+
+    private async Task ViewPatternDetail(IpPanelPatternDto p)
+    {
+        // Fetch fresh detail
+        var detail = await SmsService.GetPatternByCodeAsync(_apiKey, p.PatternCode);
+        _detailPattern = detail ?? p;
+        _showDetail = true;
+    }
+
+    private void OpenPatternDialog(IpPanelPatternDto? existing)
+    {
+        _editPattern = existing;
+        if (existing != null)
+        {
+            _form = new CreatePatternDto
+            {
+                Title       = existing.Title,
+                Description = existing.PatternDescription ?? "",
+                IsShare     = existing.PatternIsShare,
+                Message     = existing.PatternMessage,
+                Variable    = existing.Variable.Select(v => new IpPanelPatternVariable
+                {
+                    Name = v.Name,
+                    Type = v.Type,
+                    Len  = v.Len
+                }).ToList()
+            };
+        }
+        else
+        {
+            _form = new CreatePatternDto();
+        }
+        _showDialog = true;
+    }
+
+    private void AddVariable()
+        => _form.Variable.Add(new IpPanelPatternVariable { Name = "", Type = "string" });
+
+    private async Task SavePattern()
+    {
+        if (string.IsNullOrWhiteSpace(_form.Description) || string.IsNullOrWhiteSpace(_form.Message))
+        {
+            Snackbar.Add("متن پترن و توضیحات الزامی هستند", Severity.Warning);
+            return;
+        }
+        _saving = true;
+        try
+        {
+            if (_editPattern == null)
+            {
+                var result = await SmsService.CreatePatternAsync(_apiKey, _form);
+                if (result.IsSuccess)
+                {
+                    Snackbar.Add("پترن با موفقیت ایجاد شد ✓", Severity.Success);
+                    _showDialog = false;
+                    await LoadPatternsAsync();
+                }
+                else Snackbar.Add($"خطا: {result.Error}", Severity.Error);
+            }
+            else
+            {
+                var result = await SmsService.UpdatePatternAsync(_apiKey, _editPattern.PatternCode, _form);
+                if (result.IsSuccess)
+                {
+                    Snackbar.Add("پترن با موفقیت ویرایش شد ✓", Severity.Success);
+                    _showDialog = false;
+                    await LoadPatternsAsync();
+                }
+                else Snackbar.Add($"خطا: {result.Error}", Severity.Error);
+            }
+        }
+        finally { _saving = false; }
+    }
+
+    private async Task ConfirmDelete(IpPanelPatternDto p)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "حذف پترن",
+            $"آیا از حذف پترن «{p.PatternCode}» مطمئن هستید؟ این عمل قابل بازگشت نیست.",
+            yesText: "بله، حذف کن",
+            cancelText: "انصراف");
+
+        if (confirm != true) return;
+
+        var result = await SmsService.DeletePatternAsync(_apiKey, p.PatternCode);
+        if (result.IsSuccess)
+        {
+            Snackbar.Add("پترن حذف شد ✓", Severity.Success);
+            await LoadPatternsAsync();
+        }
+        else Snackbar.Add($"خطا در حذف: {result.Error}", Severity.Error);
+    }
+
+    private Color GetStatusColor(string? status) => status switch
+    {
+        "active"   => Color.Success,
+        "inactive" => Color.Error,
+        "pending"  => Color.Warning,
+        _          => Color.Default
+    };
+}

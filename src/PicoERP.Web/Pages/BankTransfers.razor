@@ -1,0 +1,231 @@
+@page "/bank-transfers"
+@inject IBankTransferService BankTransferService
+@inject IFinancialAccountService AccountService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>انتقالات بانکی — پیکو ERP</PageTitle>
+
+<div class="pico-page" dir="rtl">
+    <div class="page-header">
+        <div>
+            <MudText Typo="Typo.h4" Class="page-title">انتقالات بانکی (کارت به کارت)</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">ثبت دریافت‌های مشتری و پرداخت‌های مرتبط</MudText>
+        </div>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="OpenNewReceiptDialog">ثبت دریافت جدید</MudButton>
+    </div>
+
+    <!-- Date filter -->
+    <MudCard Elevation="1" Class="pico-card mb-3">
+        <MudCardContent>
+            <MudGrid Spacing="2" dir="rtl">
+                <MudItem xs="6" sm="3">
+                    <MudDatePicker Date="_fromDate" Label="از تاریخ" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                   DateChanged="@(d => { _fromDate = d; _ = LoadAsync(); })" />
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudDatePicker Date="_toDate" Label="تا تاریخ" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                   DateChanged="@(d => { _toDate = d; _ = LoadAsync(); })" />
+                </MudItem>
+                <MudItem xs="12" sm="3" Class="d-flex align-center">
+                    <MudText Typo="Typo.subtitle2">
+                        جمع دریافت‌ها:
+                        <strong class="amount-positive">@AppState.FormatAmount(_receipts.Sum(r => r.Amount))</strong>
+                    </MudText>
+                </MudItem>
+                <MudItem xs="12" sm="3" Class="d-flex align-center">
+                    <MudText Typo="Typo.subtitle2">
+                        جمع پرداخت‌ها:
+                        <strong class="amount-negative">@AppState.FormatAmount(_receipts.Sum(r => r.TotalPaid))</strong>
+                    </MudText>
+                </MudItem>
+            </MudGrid>
+        </MudCardContent>
+    </MudCard>
+
+    <!-- Receipts list -->
+    @if (_loading)
+    {
+        @for (int i = 0; i < 4; i++) { <MudSkeleton Height="60px" Class="mb-2" /> }
+    }
+    else if (!_receipts.Any())
+    {
+        <div class="empty-state">
+            <MudIcon Icon="@Icons.Material.Filled.CompareArrows" Style="font-size:64px; color:#90CAF9;" />
+            <h3>هیچ رسید انتقال بانکی ثبت نشده</h3>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenNewReceiptDialog">ثبت اولین دریافت</MudButton>
+        </div>
+    }
+    else
+    {
+        @foreach (var receipt in _receipts)
+        {
+            <MudCard Elevation="2" Class="pico-card mb-3">
+                <MudCardContent>
+                    <MudGrid Spacing="2" dir="rtl">
+                        <!-- Receipt header -->
+                        <MudItem xs="12">
+                            <div class="d-flex justify-space-between align-center flex-wrap" style="gap:8px;">
+                                <div>
+                                    <MudText Typo="Typo.subtitle1" Style="font-weight:700;">
+                                        <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" Class="ml-1" />
+                                        @receipt.PayerName
+                                    </MudText>
+                                    <MudText Typo="Typo.caption" Style="color:#57606a;">
+                                        شناسه: @receipt.TransactionId &nbsp;|&nbsp;
+                                        @AppState.FormatDateTime(receipt.Date) &nbsp;|&nbsp;
+                                        @receipt.AccountName
+                                    </MudText>
+                                </div>
+                                <div class="d-flex align-center" style="gap:8px;">
+                                    <div style="text-align:left;">
+                                        <MudText Typo="Typo.caption" Style="color:#57606a;">مبلغ دریافتی</MudText>
+                                        <MudText Typo="Typo.subtitle1" Class="amount-positive" Style="font-weight:700;">
+                                            @AppState.FormatAmount(receipt.Amount)
+                                        </MudText>
+                                    </div>
+                                    <MudDivider Vertical="true" FlexItem="true" />
+                                    <div style="text-align:left;">
+                                        <MudText Typo="Typo.caption" Style="color:#57606a;">پرداخت شده</MudText>
+                                        <MudText Typo="Typo.subtitle1" Class="amount-negative" Style="font-weight:700;">
+                                            @AppState.FormatAmount(receipt.TotalPaid)
+                                        </MudText>
+                                    </div>
+                                    <MudDivider Vertical="true" FlexItem="true" />
+                                    <div style="text-align:left;">
+                                        <MudText Typo="Typo.caption" Style="color:#57606a;">مانده</MudText>
+                                        <MudText Typo="Typo.subtitle1"
+                                                 Style="@($"font-weight:700; color:{(receipt.Remaining >= 0 ? "#2E7D32" : "#C62828")}")"
+                                                 >
+                                            @AppState.FormatAmount(receipt.Remaining)
+                                        </MudText>
+                                    </div>
+                                    <MudIconButton Icon="@Icons.Material.Filled.AddCircle" Color="Color.Primary" Size="Size.Small"
+                                                   OnClick="@(() => OpenAddPaymentDialog(receipt))"
+                                                   Title="افزودن پرداخت" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                                   OnClick="@(() => DeleteReceipt(receipt))" />
+                                </div>
+                            </div>
+                        </MudItem>
+
+                        <!-- Status bar -->
+                        <MudItem xs="12">
+                            @{
+                                var pct = receipt.Amount > 0 ? (double)(receipt.TotalPaid / receipt.Amount * 100) : 0;
+                                var color = receipt.Remaining < 0 ? Color.Error : receipt.Remaining == 0 ? Color.Success : Color.Warning;
+                            }
+                            <MudProgressLinear Value="@Math.Min(pct, 100)" Color="@color" Rounded="true" Size="Size.Small" />
+                            <MudText Typo="Typo.caption" Style="color:#57606a;">
+                                @(receipt.Remaining < 0 ? $"اضافه پرداخت: {AppState.FormatAmount(Math.Abs(receipt.Remaining))}" :
+                                  receipt.Remaining == 0 ? "تسویه کامل" :
+                                  $"مانده قابل پرداخت: {AppState.FormatAmount(receipt.Remaining)}")
+                            </MudText>
+                        </MudItem>
+
+                        <!-- Payments sub-table -->
+                        @if (receipt.Payments.Any())
+                        {
+                            <MudItem xs="12">
+                                <MudTable Items="receipt.Payments" Dense="true" Elevation="0"
+                                          Style="background:#f7f8fa; border-radius:6px;">
+                                    <HeaderContent>
+                                        <MudTh>گیرنده</MudTh>
+                                        <MudTh>شناسه تراکنش</MudTh>
+                                        <MudTh>هدف / توضیح</MudTh>
+                                        <MudTh>مبلغ</MudTh>
+                                        <MudTh>تاریخ</MudTh>
+                                        <MudTh></MudTh>
+                                    </HeaderContent>
+                                    <RowTemplate>
+                                        <MudTd>@context.RecipientName</MudTd>
+                                        <MudTd><MudText Typo="Typo.caption" dir="ltr">@(context.TransactionId ?? "—")</MudText></MudTd>
+                                        <MudTd><MudText Typo="Typo.caption">@(context.Purpose ?? "—")</MudText></MudTd>
+                                        <MudTd><strong class="amount-negative">@AppState.FormatAmount(context.Amount)</strong></MudTd>
+                                        <MudTd dir="ltr"><MudText Typo="Typo.caption">@AppState.FormatDateTime(context.Date)</MudText></MudTd>
+                                        <MudTd>
+                                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                                           OnClick="@(() => DeletePayment(receipt, context))" />
+                                        </MudTd>
+                                    </RowTemplate>
+                                </MudTable>
+                            </MudItem>
+                        }
+                    </MudGrid>
+                </MudCardContent>
+            </MudCard>
+        }
+    }
+</div>
+
+@code {
+    private List<BankTransferReceiptDto> _receipts = new();
+    private List<FinancialAccountDto> _accounts = new();
+    private DateTime? _fromDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateTime? _toDate   = DateTime.Today;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _accounts = await AccountService.GetAllAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _receipts = await BankTransferService.GetReceiptsAsync(_fromDate, _toDate);
+        _loading = false;
+    }
+
+    private async Task OpenNewReceiptDialog()
+    {
+        var parameters = new DialogParameters
+        {
+            ["Accounts"] = _accounts,
+            ["Username"] = AppState.CurrentUser?.DisplayName ?? "system"
+        };
+        var dialog = await DialogService.ShowAsync<BankTransferReceiptDialog>(
+            "ثبت دریافت بانکی", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (!result.Canceled) await LoadAsync();
+    }
+
+    private async Task OpenAddPaymentDialog(BankTransferReceiptDto receipt)
+    {
+        var parameters = new DialogParameters
+        {
+            ["Receipt"]  = receipt,
+            ["Accounts"] = _accounts,
+            ["Username"] = AppState.CurrentUser?.DisplayName ?? "system"
+        };
+        var dialog = await DialogService.ShowAsync<BankTransferPaymentDialog>(
+            "افزودن پرداخت", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (!result.Canceled) await LoadAsync();
+    }
+
+    private async Task DeleteReceipt(BankTransferReceiptDto receipt)
+    {
+        var ok = await DialogService.ShowMessageBox("حذف رسید", "این رسید و تمام پرداخت‌های مرتبط حذف می‌شوند؟", yesText: "بله", cancelText: "خیر");
+        if (ok == true)
+        {
+            var result = await BankTransferService.DeleteReceiptAsync(receipt.Id);
+            if (result.IsSuccess) { Snackbar.Add("حذف شد", Severity.Success); await LoadAsync(); }
+        }
+    }
+
+    private async Task DeletePayment(BankTransferReceiptDto receipt, BankTransferPaymentDto payment)
+    {
+        var ok = await DialogService.ShowMessageBox("حذف پرداخت", "این پرداخت حذف شود؟", yesText: "بله", cancelText: "خیر");
+        if (ok == true)
+        {
+            var result = await BankTransferService.DeletePaymentAsync(payment.Id);
+            if (result.IsSuccess) { Snackbar.Add("حذف شد", Severity.Success); await LoadAsync(); }
+        }
+    }
+}

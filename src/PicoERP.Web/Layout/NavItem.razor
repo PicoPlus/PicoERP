@@ -1,0 +1,19 @@
+@inject NavigationManager Nav
+
+<NavLink href="@Href" Match="@Match" class="@GetClass()" @onclick="OnClick">
+    <span class="nav-icon">
+        <MudIcon Icon="@Icon" Size="Size.Small" />
+    </span>
+    <span class="nav-label">@Label</span>
+</NavLink>
+
+@code {
+    [Parameter] public string Href { get; set; } = "/";
+    [Parameter] public string Icon { get; set; } = Icons.Material.Filled.Circle;
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public NavLinkMatch Match { get; set; } = NavLinkMatch.Prefix;
+    [Parameter] public EventCallback OnClick { get; set; }
+
+    private bool IsActive => Nav.Uri.EndsWith(Href) || (Href == "/" && Nav.Uri == Nav.BaseUri);
+    private string GetClass() => IsActive ? "pico-nav-item active" : "pico-nav-item";
+}

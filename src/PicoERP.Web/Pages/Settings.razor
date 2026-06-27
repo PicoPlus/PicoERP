@@ -1,0 +1,358 @@
+@page "/settings"
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+@inject IHubSpotService HubSpotService
+@inject ISmsService SmsService
+@inject ISettingsService SettingsService
+
+<PageTitle>تنظیمات — پیکو ERP</PageTitle>
+
+<div class="pico-page" dir="rtl">
+    <div class="page-header">
+        <MudText Typo="Typo.h4" Class="page-title">تنظیمات سیستم</MudText>
+    </div>
+
+    <MudGrid Spacing="3">
+        <!-- Display Settings -->
+        <MudItem xs="12" md="6">
+            <MudCard Elevation="2" Class="pico-card">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6"><MudIcon Icon="@Icons.Material.Filled.Palette" Class="ml-2" />تنظیمات نمایش</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudGrid Spacing="2">
+                        <MudItem xs="12">
+                            <div class="settings-row">
+                                <div>
+                                    <MudText Typo="Typo.body1">حالت تاریک</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">تغییر تم به حالت تاریک</MudText>
+                                </div>
+                                <MudSwitch Value="AppState.IsDarkMode" Color="Color.Primary"
+                                           ValueChanged="@((bool v) => AppState.ToggleDarkMode())" />
+                            </div>
+                        </MudItem>
+                        <MudDivider />
+                        <MudItem xs="12">
+                            <div class="settings-row">
+                                <div>
+                                    <MudText Typo="Typo.body1">اعداد فارسی</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">نمایش اعداد به فارسی (۱۲۳ به جای 123)</MudText>
+                                </div>
+                                <MudSwitch @bind-Value="AppState.UsePersianNumerals" Color="Color.Primary" />
+                            </div>
+                        </MudItem>
+                    </MudGrid>
+                </MudCardContent>
+                <MudCardActions>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveSettings">ذخیره تنظیمات</MudButton>
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+
+        <!-- Business Settings -->
+        <MudItem xs="12" md="6">
+            <MudCard Elevation="2" Class="pico-card">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6"><MudIcon Icon="@Icons.Material.Filled.Business" Class="ml-2" />اطلاعات کسب‌وکار</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudGrid Spacing="2">
+                        <MudItem xs="12">
+                            <MudTextField @bind-Value="AppState.BusinessName" Label="نام کسب‌وکار" Variant="Variant.Outlined" />
+                        </MudItem>
+                    </MudGrid>
+                </MudCardContent>
+                <MudCardActions>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveSettings">ذخیره</MudButton>
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+
+        <!-- HubSpot Integration -->
+        <MudItem xs="12">
+            <MudCard Elevation="2" Class="pico-card">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">
+                            <MudIcon Icon="@Icons.Material.Filled.Cloud" Class="ml-2" />
+                            یکپارچه‌سازی HubSpot CRM
+                        </MudText>
+                    </CardHeaderContent>
+                    <CardHeaderActions>
+                        @if (_hubspotOk.HasValue)
+                        {
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
+                                     Color="@(_hubspotOk.Value ? Color.Success : Color.Error)">
+                                @(_hubspotOk.Value ? "متصل" : "خطا")
+                            </MudChip>
+                        }
+                    </CardHeaderActions>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudGrid Spacing="2">
+                        <MudItem xs="12">
+                            <MudTextField @bind-Value="_hubspotKey"
+                                          Label="کلید API هاب‌اسپات (Private App Token)"
+                                          Variant="Variant.Outlined"
+                                          InputType="InputType.Password"
+                                          Placeholder="pat-na1-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                                          Adornment="Adornment.End"
+                                          AdornmentIcon="@Icons.Material.Filled.VpnKey"
+                                          HelperText="از پنل HubSpot → Settings → Private Apps دریافت کنید" />
+                        </MudItem>
+                    </MudGrid>
+                </MudCardContent>
+                <MudCardActions>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Secondary"
+                               StartIcon="@Icons.Material.Filled.NetworkCheck"
+                               OnClick="TestHubSpot" Disabled="@(_testingHub || _savingHub)">
+                        @(_testingHub ? "در حال بررسی..." : "تست اتصال")
+                    </MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Save"
+                               OnClick="SaveHubSpotKey" Disabled="@_savingHub" Class="mr-2">
+                        @(_savingHub ? "در حال ذخیره..." : "ذخیره کلید")
+                    </MudButton>
+                    @if (_hubspotOk == true)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Success"
+                                   StartIcon="@Icons.Material.Filled.Sync"
+                                   Href="/hubspot" Class="mr-2">رفتن به صفحه همگام‌سازی</MudButton>
+                    }
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+
+        <!-- SMS Settings -->
+        <MudItem xs="12">
+            <MudCard Elevation="2" Class="pico-card">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">
+                            <MudIcon Icon="@Icons.Material.Filled.Sms" Class="ml-2" />
+                            تنظیمات پیامک گزارش
+                        </MudText>
+                    </CardHeaderContent>
+                    <CardHeaderActions>
+                        @if (_smsOk.HasValue)
+                        {
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
+                                     Color="@(_smsOk.Value ? Color.Success : Color.Error)">
+                                @(_smsOk.Value ? "ارسال موفق" : "خطا")
+                            </MudChip>
+                        }
+                    </CardHeaderActions>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudGrid Spacing="2">
+                        <MudItem xs="12" md="6">
+                            <MudTextField @bind-Value="_smsApiKey"
+                                          Label="کلید API آی‌پی‌پنل"
+                                          Variant="Variant.Outlined"
+                                          InputType="InputType.Password"
+                                          Adornment="Adornment.End"
+                                          AdornmentIcon="@Icons.Material.Filled.VpnKey"
+                                          HelperText="از پنل ippanel.com → تنظیمات → API دریافت کنید" />
+                        </MudItem>
+                        <MudItem xs="12" md="3">
+                            <MudTextField @bind-Value="_smsAdminPhone"
+                                          Label="شماره موبایل مدیر"
+                                          Variant="Variant.Outlined"
+                                          Adornment="Adornment.Start"
+                                          AdornmentIcon="@Icons.Material.Filled.PhoneAndroid"
+                                          Placeholder="09123456789"
+                                          HelperText="گزارش‌های SMS به این شماره ارسال می‌شود" />
+                        </MudItem>
+                        <MudItem xs="12" md="3">
+                            <div style="display:flex;gap:6px;align-items:flex-start;">
+                                <MudSelect @bind-Value="_smsSender"
+                                           Label="شماره فرستنده"
+                                           Variant="Variant.Outlined"
+                                           Disabled="@_loadingNumbers"
+                                           HelperText="@(_loadingNumbers ? "در حال بارگذاری خطوط..." : $"{_senderNumbers.Count} خط یافت شد")"
+                                           AnchorOrigin="Origin.BottomLeft"
+                                           Style="flex:1;">
+                                    @foreach (var num in _senderNumbers)
+                                    {
+                                        <MudSelectItem Value="@num">@num</MudSelectItem>
+                                    }
+                                </MudSelect>
+                                <MudTooltip Text="بارگذاری خطوط از آی‌پی‌پنل">
+                                    <MudIconButton Icon="@Icons.Material.Filled.Refresh"
+                                                   Variant="Variant.Outlined"
+                                                   Color="Color.Primary"
+                                                   Size="Size.Medium"
+                                                   Disabled="@(_loadingNumbers || string.IsNullOrWhiteSpace(_smsApiKey))"
+                                                   OnClick="LoadSenderNumbersAsync"
+                                                   Style="margin-top:4px;" />
+                                </MudTooltip>
+                            </div>
+                        </MudItem>
+                    </MudGrid>
+                </MudCardContent>
+                <MudCardActions>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Secondary"
+                               StartIcon="@Icons.Material.Filled.Send"
+                               OnClick="TestSms" Disabled="@_testingSms">
+                        @(_testingSms ? "در حال ارسال..." : "ارسال پیامک تست")
+                    </MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Save"
+                               OnClick="SaveSmsSettings" Class="mr-2">ذخیره تنظیمات پیامک</MudButton>
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+
+        <!-- About -->
+        <MudItem xs="12">
+            <MudCard Elevation="2" Class="pico-card">
+                <MudCardContent>
+                    <div class="about-section">
+                        <MudIcon Icon="@Icons.Material.Filled.Info" Color="Color.Primary" Size="Size.Large" />
+                        <div>
+                            <MudText Typo="Typo.h6">پیکو ERP</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">سیستم مدیریت جامع کافه نت — نسخه ۱.۰.۰</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                ساخته شده با ASP.NET Core 9 — Blazor Server — MudBlazor — SQLite
+                            </MudText>
+                        </div>
+                    </div>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+</div>
+
+@code {
+    private string _hubspotKey = "";
+    private bool? _hubspotOk;
+    private bool _testingHub;
+    private bool _savingHub;
+
+    private string _smsApiKey = "";
+    private string _smsAdminPhone = "";
+    private string _smsSender = "";
+    private bool? _smsOk;
+    private bool _testingSms;
+    private bool _loadingNumbers;
+    private IReadOnlyList<string> _senderNumbers = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Load HubSpot key from DB (persists across restarts)
+        _hubspotKey    = await HubSpotService.GetApiKeyAsync() ?? "";
+
+        _smsApiKey     = await SettingsService.GetAsync("Sms:ApiKey")     ?? "";
+        _smsAdminPhone = await SettingsService.GetAsync("Sms:AdminPhone") ?? "";
+        _smsSender     = await SettingsService.GetAsync("Sms:Sender")     ?? "";
+
+        // Populate AppState so other pages can read without their own DB call
+        AppState.HubSpotApiKey = _hubspotKey;
+        AppState.SmsApiKey     = _smsApiKey;
+        AppState.SmsAdminPhone = _smsAdminPhone;
+        AppState.SmsSender     = _smsSender;
+
+        // Load sender numbers from IPPanel if a key is already configured
+        await LoadSenderNumbersAsync();
+    }
+
+    private async Task LoadSenderNumbersAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_smsApiKey))
+        {
+            Snackbar.Add("ابتدا کلید API پیامک را وارد کنید", Severity.Warning);
+            return;
+        }
+
+        _loadingNumbers = true;
+        StateHasChanged();
+
+        _senderNumbers = await SmsService.GetNumbersAsync(_smsApiKey);
+
+        // If the saved sender is not in the list, add it so the dropdown still shows it
+        if (!string.IsNullOrWhiteSpace(_smsSender) && !_senderNumbers.Contains(_smsSender))
+            _senderNumbers = [_smsSender, .._senderNumbers];
+
+        _loadingNumbers = false;
+
+        if (_senderNumbers.Count == 0)
+            Snackbar.Add("هیچ خطی یافت نشد — کلید API را بررسی کنید", Severity.Warning);
+        else
+            Snackbar.Add($"{_senderNumbers.Count} خط بارگذاری شد", Severity.Success);
+
+        StateHasChanged();
+    }
+
+    private void SaveSettings()
+    {
+        Snackbar.Add("تنظیمات ذخیره شد", Severity.Success);
+    }
+
+    private async Task SaveHubSpotKey()
+    {
+        _savingHub = true;
+        await HubSpotService.SaveApiKeyAsync(_hubspotKey);
+        AppState.HubSpotApiKey = _hubspotKey;
+        _savingHub = false;
+        Snackbar.Add("کلید API هاب‌اسپات ذخیره شد", Severity.Success);
+    }
+
+    private async Task SaveSmsSettings()
+    {
+        await SettingsService.SetAsync("Sms:ApiKey",     _smsApiKey);
+        await SettingsService.SetAsync("Sms:AdminPhone", _smsAdminPhone);
+        await SettingsService.SetAsync("Sms:Sender",     _smsSender);
+
+        AppState.SmsApiKey     = _smsApiKey;
+        AppState.SmsAdminPhone = _smsAdminPhone;
+        AppState.SmsSender     = _smsSender;
+
+        // Refresh sender number list in case the API key changed
+        await LoadSenderNumbersAsync();
+
+        Snackbar.Add("تنظیمات پیامک ذخیره شد", Severity.Success);
+    }
+
+    private async Task TestSms()
+    {
+        if (string.IsNullOrWhiteSpace(_smsApiKey))
+        {
+            Snackbar.Add("ابتدا کلید API آی‌پی‌پنل را وارد کنید", Severity.Warning);
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_smsSender))
+        {
+            Snackbar.Add("ابتدا شماره فرستنده را انتخاب کنید", Severity.Warning);
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_smsAdminPhone))
+        {
+            Snackbar.Add("ابتدا شماره موبایل مدیر را وارد کنید", Severity.Warning);
+            return;
+        }
+        _testingSms = true;
+        var result = await SmsService.TestAsync(_smsApiKey, _smsSender, _smsAdminPhone);
+        _smsOk = result.IsSuccess;
+        _testingSms = false;
+        Snackbar.Add(result.IsSuccess ? "پیامک تست ارسال شد ✓" : $"خطا: {result.Error}",
+                     result.IsSuccess ? Severity.Success : Severity.Error);
+    }
+
+    private async Task TestHubSpot()
+    {
+        if (string.IsNullOrWhiteSpace(_hubspotKey))
+        {
+            Snackbar.Add("ابتدا کلید API را وارد کنید", Severity.Warning);
+            return;
+        }
+        _testingHub = true;
+        _hubspotOk  = await HubSpotService.TestConnectionAsync(_hubspotKey);
+        _testingHub = false;
+        Snackbar.Add(_hubspotOk.Value ? "اتصال موفق بود ✓" : "اتصال ناموفق — کلید را بررسی کنید",
+                     _hubspotOk.Value ? Severity.Success : Severity.Error);
+    }
+}

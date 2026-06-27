@@ -1,0 +1,251 @@
+@page "/"
+@inject IDashboardService DashboardService
+@inject AppStateService AppState
+
+<PageTitle>داشبورد — پیکو ERP</PageTitle>
+
+<div class="pico-page" dir="rtl">
+    <!-- Page Header -->
+    <div class="page-header">
+        <div>
+            <MudText Typo="Typo.h4" Class="page-title">داشبورد</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                @AppState.FormatDate(DateTime.Now) — @GetPersianDayName()
+            </MudText>
+        </div>
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh"
+                   OnClick="LoadData">به‌روزرسانی</MudButton>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="dashboard-skeleton">
+            @for (int i = 0; i < 8; i++)
+            {
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="120px" Class="rounded-card" />
+            }
+        </div>
+    }
+    else if (_data != null)
+    {
+        <!-- KPI Cards Row 1: Today -->
+        <MudText Typo="Typo.h6" Class="section-title">امروز</MudText>
+        <MudGrid Spacing="3" Class="mb-4">
+            <MudItem xs="12" sm="6" md="3">
+                <StatCard Title="درآمد امروز" Value="@AppState.FormatAmount(_data.TodayIncome)"
+                          Icon="@Icons.Material.Filled.TrendingUp" Color="#2E7D32" BgColor="#E8F5E9"
+                          Trend="income" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <StatCard Title="هزینه امروز" Value="@AppState.FormatAmount(_data.TodayExpense)"
+                          Icon="@Icons.Material.Filled.TrendingDown" Color="#C62828" BgColor="#FFEBEE"
+                          Trend="expense" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <StatCard Title="سود امروز" Value="@AppState.FormatAmount(_data.TodayProfit)"
+                          Icon="@Icons.Material.Filled.AccountBalanceWallet" Color="#1565C0" BgColor="#E3F2FD"
+                          Trend="@(_data.TodayProfit >= 0 ? "profit" : "loss")" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <StatCard Title="درآمد هفته" Value="@AppState.FormatAmount(_data.WeekIncome)"
+                          Icon="@Icons.Material.Filled.DateRange" Color="#6A1B9A" BgColor="#F3E5F5"
+                          Trend="income" />
+            </MudItem>
+        </MudGrid>
+
+        <!-- KPI Cards Row 2: Month -->
+        <MudText Typo="Typo.h6" Class="section-title">این ماه</MudText>
+        <MudGrid Spacing="3" Class="mb-4">
+            <MudItem xs="12" sm="6" md="3">
+                <StatCard Title="درآمد ماه" Value="@AppState.FormatAmount(_data.MonthIncome)"
+                          Icon="@Icons.Material.Filled.AttachMoney" Color="#00695C" BgColor="#E0F2F1"
+                          Trend="income" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <StatCard Title="هزینه ماه" Value="@AppState.FormatAmount(_data.MonthExpense)"
+                          Icon="@Icons.Material.Filled.MoneyOff" Color="#D84315" BgColor="#FBE9E7"
+                          Trend="expense" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <StatCard Title="سود ماه" Value="@AppState.FormatAmount(_data.MonthProfit)"
+                          Icon="@Icons.Material.Filled.TrendingUp" Color="#1565C0" BgColor="#E8EAF6"
+                          Trend="@(_data.MonthProfit >= 0 ? "profit" : "loss")" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <StatCard Title="حقوق پرداخت نشده" Value="@AppState.FormatAmount(_data.UnpaidSalaries)"
+                          Icon="@Icons.Material.Filled.PeopleAlt" Color="#E65100" BgColor="#FFF3E0"
+                          Trend="warning" />
+            </MudItem>
+        </MudGrid>
+
+        <!-- Accounts & Staff Row -->
+        <MudGrid Spacing="3" Class="mb-4">
+            <MudItem xs="12" sm="4">
+                <StatCard Title="موجودی صندوق" Value="@AppState.FormatAmount(_data.CashBalance)"
+                          Icon="@Icons.Material.Filled.AccountBalance" Color="#1B5E20" BgColor="#F1F8E9" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <StatCard Title="موجودی بانک" Value="@AppState.FormatAmount(_data.BankBalance)"
+                          Icon="@Icons.Material.Filled.AccountBalanceWallet" Color="#0D47A1" BgColor="#E8EAF6" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <StatCard Title="کارتخوان" Value="@AppState.FormatAmount(_data.CardReaderBalance)"
+                          Icon="@Icons.Material.Filled.CreditCard" Color="#4A148C" BgColor="#F3E5F5" />
+            </MudItem>
+        </MudGrid>
+
+        <!-- Staff Count -->
+        <MudGrid Spacing="3" Class="mb-4">
+            <MudItem xs="12" sm="4">
+                <StatCard Title="کل کارمندان" Value="@_data.TotalEmployees.ToString()"
+                          Icon="@Icons.Material.Filled.People" Color="#1565C0" BgColor="#E3F2FD" />
+            </MudItem>
+        </MudGrid>
+
+        <!-- Charts & Recent Transactions -->
+        <MudGrid Spacing="3" Class="mb-4">
+            <!-- Monthly Chart -->
+            <MudItem xs="12" md="8">
+                <MudCard Elevation="2" Class="pico-card">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">نمودار درآمد و هزینه ۶ ماه گذشته</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <div class="chart-container">
+                            <BarChart IncomeData="_data.MonthlyIncomeChart" ExpenseData="_data.MonthlyExpenseChart" />
+                        </div>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <!-- Top Categories -->
+            <MudItem xs="12" md="4">
+                <MudCard Elevation="2" Class="pico-card" Style="height:100%;">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">بیشترین درآمدها این ماه</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        @foreach (var (cat, idx) in _data.TopIncomeCategories.Select((c, i) => (c, i)))
+                        {
+                            <div class="top-category-item">
+                                <div class="category-rank">@PersianNumberFormatter.ToPersian((idx + 1).ToString())</div>
+                                <div class="category-info">
+                                    <span class="category-name">@cat.Name</span>
+                                    <span class="category-amount">@AppState.FormatAmount(cat.Amount)</span>
+                                </div>
+                                <MudProgressLinear Value="@cat.Percentage" Color="Color.Primary" Size="Size.Small" Rounded="true" />
+                            </div>
+                        }
+                        @if (!_data.TopIncomeCategories.Any())
+                        {
+                            <div class="empty-state-sm">
+                                <MudIcon Icon="@Icons.Material.Filled.Inbox" />
+                                <span>داده‌ای یافت نشد</span>
+                            </div>
+                        }
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+
+        <!-- Recent Transactions -->
+        <MudGrid Spacing="3">
+            <MudItem xs="12" md="6">
+                <MudCard Elevation="2" Class="pico-card">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">آخرین درآمدها</MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            <MudButton Href="/incomes" Size="Size.Small" Color="Color.Primary" Variant="Variant.Text">مشاهده همه</MudButton>
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                    <MudCardContent Class="pa-0">
+                        <MudSimpleTable Hover="true" Dense="true" Style="border-radius:0;">
+                            <thead>
+                                <tr>
+                                    <th>دسته</th>
+                                    <th>تاریخ</th>
+                                    <th>مبلغ</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var item in _data.RecentIncomes)
+                                {
+                                    <tr>
+                                        <td>@item.CategoryName</td>
+                                        <td dir="ltr">@AppState.FormatDateTime(item.Date)</td>
+                                        <td class="amount-positive">@AppState.FormatAmount(item.Amount)</td>
+                                    </tr>
+                                }
+                                @if (!_data.RecentIncomes.Any())
+                                {
+                                    <tr><td colspan="3" class="text-center pa-4 text-muted">موردی ثبت نشده</td></tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudCard Elevation="2" Class="pico-card">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">آخرین هزینه‌ها</MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            <MudButton Href="/expenses" Size="Size.Small" Color="Color.Error" Variant="Variant.Text">مشاهده همه</MudButton>
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                    <MudCardContent Class="pa-0">
+                        <MudSimpleTable Hover="true" Dense="true" Style="border-radius:0;">
+                            <thead>
+                                <tr>
+                                    <th>دسته</th>
+                                    <th>تاریخ</th>
+                                    <th>مبلغ</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var item in _data.RecentExpenses)
+                                {
+                                    <tr>
+                                        <td>@item.CategoryName</td>
+                                        <td dir="ltr">@AppState.FormatDateTime(item.Date)</td>
+                                        <td class="amount-negative">@AppState.FormatAmount(item.Amount)</td>
+                                    </tr>
+                                }
+                                @if (!_data.RecentExpenses.Any())
+                                {
+                                    <tr><td colspan="3" class="text-center pa-4 text-muted">موردی ثبت نشده</td></tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+    }
+</div>
+
+@code {
+    private DashboardDto? _data;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync() => await LoadData();
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        StateHasChanged();
+        _data = await DashboardService.GetDashboardDataAsync();
+        _loading = false;
+    }
+
+    private string GetPersianDayName() => PersianCalendar.GetPersianDayName(DateTime.Now.DayOfWeek);
+}

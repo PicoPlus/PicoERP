@@ -1,0 +1,161 @@
+@inject PicoERP.Infrastructure.Persistence.AppDbContext Db
+@inject IFinancialAccountService AccountService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@using PicoERP.Domain.Entities
+
+<MudDialog>
+    <TitleContent><MudText Typo="Typo.h6">@(Purchase == null ? "ثبت خرید جدید" : "ویرایش خرید")</MudText></TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2" dir="rtl">
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_vendorName" Label="نام فروشنده *" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_invoiceNumber" Label="شماره فاکتور" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect @bind-Value="_purchaseType" Label="نوع خرید *" Variant="Variant.Outlined">
+                    <MudSelectItem Value="@ExpenseGroup.Business">کاری</MudSelectItem>
+                    <MudSelectItem Value="@ExpenseGroup.Personal">شخصی</MudSelectItem>
+                    <MudSelectItem Value="@ExpenseGroup.Employee">کارمند</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker @bind-Date="_date" Label="تاریخ *" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTimePicker @bind-Time="_time" Label="ساعت" Variant="Variant.Outlined" AmPm="false" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField @bind-Value="_quantity" Label="تعداد *" Variant="Variant.Outlined" Min="1" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField @bind-Value="_unitPrice" Label="قیمت واحد *" Variant="Variant.Outlined" Min="0" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField @bind-Value="_discount" Label="تخفیف" Variant="Variant.Outlined" Min="0" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField @bind-Value="_tax" Label="مالیات" Variant="Variant.Outlined" Min="0" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <div class="d-flex align-center" style="gap:4px;">
+                    <MudSelect @bind-Value="_accountId" Label="حساب پرداخت" Variant="Variant.Outlined" T="int?" Clearable="true" Style="flex:1;">
+                        @foreach (var a in _accounts) { <MudSelectItem Value="@((int?)a.Id)">@a.Name</MudSelectItem> }
+                    </MudSelect>
+                    <MudTooltip Text="افزودن حساب جدید">
+                        <MudIconButton Icon="@Icons.Material.Filled.AddCircle" Color="Color.Primary"
+                                       Size="Size.Medium" OnClick="AddAccount" />
+                    </MudTooltip>
+                </div>
+            </MudItem>
+            <!-- Net total preview -->
+            <MudItem xs="12">
+                <MudPaper Elevation="0" Class="pa-3" Style="background:#F3E5F5; border-radius:8px;">
+                    <MudText Style="font-weight:700; color:#6A1B9A;">
+                        جمع کل: @((_quantity * _unitPrice - _discount + _tax).ToString("N0")) تومان
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_description" Label="توضیحات" Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Outlined">انصراف</MudButton>
+        <MudButton OnClick="Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@_loading">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public Purchase? Purchase { get; set; }
+    [Parameter] public List<FinancialAccountDto> Accounts { get; set; } = new();
+    [Parameter] public List<EmployeeDto> Employees { get; set; } = new();
+    [Parameter] public string Username { get; set; } = "system";
+
+    private List<FinancialAccountDto> _accounts = new();
+    private string _vendorName = "";
+    private string? _invoiceNumber;
+    private ExpenseGroup _purchaseType = ExpenseGroup.Business;
+    private DateTime? _date = DateTime.Now;
+    private TimeSpan? _time = DateTime.Now.TimeOfDay;
+    private int _quantity = 1;
+    private decimal _unitPrice;
+    private decimal _discount;
+    private decimal _tax;
+    private int? _accountId;
+    private string? _description;
+    private bool _loading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _accounts = Accounts.Any() ? Accounts : await AccountService.GetAllAsync();
+    }
+
+    protected override void OnInitialized()
+    {
+        if (Purchase != null)
+        {
+            _vendorName = Purchase.VendorName; _invoiceNumber = Purchase.InvoiceNumber;
+            _purchaseType = Purchase.PurchaseType; _date = Purchase.Date; _time = Purchase.Date.TimeOfDay;
+            _quantity = Purchase.Quantity; _unitPrice = Purchase.UnitPrice;
+            _discount = Purchase.Discount; _tax = Purchase.Tax;
+            _accountId = Purchase.FinancialAccountId; _description = Purchase.Description;
+        }
+    }
+
+    private async Task Submit()
+    {
+        if (string.IsNullOrWhiteSpace(_vendorName) || _unitPrice <= 0)
+        {
+            Snackbar.Add("فیلدهای اجباری را پر کنید", Severity.Warning); return;
+        }
+        _loading = true;
+        try
+        {
+            var total = _quantity * _unitPrice - _discount + _tax;
+            if (Purchase == null)
+            {
+                Db.Purchases.Add(new Purchase
+                {
+                    VendorName = _vendorName, InvoiceNumber = _invoiceNumber,
+                    PurchaseType = _purchaseType, Date = (_date ?? DateTime.Now).Date + (_time ?? DateTime.Now.TimeOfDay),
+                    Quantity = _quantity, UnitPrice = _unitPrice, Discount = _discount,
+                    Tax = _tax, TotalAmount = total, FinancialAccountId = _accountId,
+                    Description = _description, RegisteredBy = Username,
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+            else
+            {
+                Purchase.VendorName = _vendorName; Purchase.InvoiceNumber = _invoiceNumber;
+                Purchase.PurchaseType = _purchaseType; Purchase.Date = (_date ?? DateTime.Now).Date + (_time ?? DateTime.Now.TimeOfDay);
+                Purchase.Quantity = _quantity; Purchase.UnitPrice = _unitPrice;
+                Purchase.Discount = _discount; Purchase.Tax = _tax; Purchase.TotalAmount = total;
+                Purchase.FinancialAccountId = _accountId; Purchase.Description = _description;
+                Purchase.UpdatedAt = DateTime.UtcNow;
+            }
+            await Db.SaveChangesAsync();
+            Snackbar.Add(Purchase == null ? "خرید ثبت شد" : "به‌روزرسانی شد", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        finally { _loading = false; }
+    }
+    private async Task AddAccount()
+    {
+        var dialog = await DialogService.ShowAsync<AccountDialog>("افزودن حساب مالی",
+            new DialogParameters { ["Account"] = (FinancialAccountDto?)null },
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (!result.Canceled)
+        {
+            _accounts = await AccountService.GetAllAsync();
+            _accountId = _accounts.LastOrDefault()?.Id;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

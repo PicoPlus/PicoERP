@@ -1,0 +1,160 @@
+@inject IExpenseService ExpenseService
+@inject IFinancialAccountService AccountService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@(Item == null ? Icons.Material.Filled.Add : Icons.Material.Filled.Edit)" Class="ml-2" />
+            @(Item == null ? "ثبت هزینه جدید" : "ویرایش هزینه")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2" dir="rtl">
+            <MudItem xs="12" sm="6">
+                <MudSelect @bind-Value="_dto.Group" Label="گروه هزینه *" Variant="Variant.Outlined" Required="true"
+                           @bind-Value:after="OnGroupChanged">
+                    <MudSelectItem Value="@ExpenseGroup.Business">هزینه کاری</MudSelectItem>
+                    <MudSelectItem Value="@ExpenseGroup.Personal">هزینه شخصی</MudSelectItem>
+                    <MudSelectItem Value="@ExpenseGroup.Employee">هزینه کارمند</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect @bind-Value="_dto.CategoryId" Label="دسته‌بندی *" Variant="Variant.Outlined" Required="true">
+                    @foreach (var cat in _filteredCategories)
+                    {
+                        <MudSelectItem Value="@cat.Id">@cat.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField @bind-Value="_dto.Amount" Label="مبلغ (ریال) *" Variant="Variant.Outlined" Required="true" Min="1" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker @bind-Date="_selectedDate" Label="تاریخ *" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <div class="d-flex align-center" style="gap:4px;">
+                    <MudSelect @bind-Value="_dto.FinancialAccountId" Label="حساب پرداخت" Variant="Variant.Outlined" T="int?" Clearable="true" Style="flex:1;">
+                        @foreach (var acc in _accounts)
+                        {
+                            <MudSelectItem Value="@((int?)acc.Id)">@acc.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudTooltip Text="افزودن حساب جدید">
+                        <MudIconButton Icon="@Icons.Material.Filled.AddCircle" Color="Color.Primary"
+                                       Size="Size.Medium" OnClick="AddAccount" />
+                    </MudTooltip>
+                </div>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_dto.InvoiceNumber" Label="شماره فاکتور" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_dto.Description" Label="توضیحات" Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_dto.Tags" Label="برچسب‌ها" Variant="Variant.Outlined"
+                              HelperText="برچسب‌ها را با ویرگول جدا کنید" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Outlined">انصراف</MudButton>
+        <MudButton OnClick="Submit" Variant="Variant.Filled" Color="Color.Error" Disabled="@_loading">
+            @if (_loading) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="ml-1" /> }
+            ذخیره
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public ExpenseDto? Item { get; set; }
+    [Parameter] public List<ExpenseCategoryDto> Categories { get; set; } = new();
+    [Parameter] public List<FinancialAccountDto> Accounts { get; set; } = new();
+    [Parameter] public string Username { get; set; } = "system";
+
+    private CreateExpenseDto _dto = new();
+    private DateTime? _selectedDate = DateTime.Today;
+    private bool _loading = false;
+    private List<ExpenseCategoryDto> _filteredCategories = new();
+    private List<FinancialAccountDto> _accounts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _accounts = Accounts.Any() ? Accounts : await AccountService.GetAllAsync();
+    }
+
+    protected override void OnInitialized()
+    {
+        if (Item != null)
+        {
+            _dto = new CreateExpenseDto
+            {
+                CategoryId = Item.CategoryId, Amount = Item.Amount, Date = Item.Date,
+                Description = Item.Description, FinancialAccountId = Item.FinancialAccountId,
+                Tags = Item.Tags, EmployeeId = Item.EmployeeId, Group = Item.Group, InvoiceNumber = Item.InvoiceNumber
+            };
+            _selectedDate = Item.Date.Date;
+        }
+    }
+
+    // OnParametersSet runs after every parameter update — guarantees Categories is populated
+    // before we filter, fixing the "گروه هزینه لود نمی‌شود" bug.
+    protected override void OnParametersSet()
+    {
+        FilterCategories();
+    }
+
+    private void OnGroupChanged()
+    {
+        _dto.CategoryId = 0;
+        FilterCategories();
+    }
+
+    private void FilterCategories()
+    {
+        _filteredCategories = Categories.Where(c => c.Group == _dto.Group).ToList();
+    }
+
+    private async Task Submit()
+    {
+        if (_dto.CategoryId == 0 || _dto.Amount <= 0) { Snackbar.Add("لطفاً فیلدهای اجباری را پر کنید", Severity.Warning); return; }
+        _dto.Date = (_selectedDate ?? DateTime.Today).Date;
+        _loading = true;
+        try
+        {
+            Application.Common.Result<ExpenseDto> result;
+            if (Item == null)
+                result = await ExpenseService.CreateAsync(_dto, Username);
+            else
+                result = await ExpenseService.UpdateAsync(new UpdateExpenseDto
+                {
+                    Id = Item.Id, CategoryId = _dto.CategoryId, Amount = _dto.Amount, Date = _dto.Date,
+                    Description = _dto.Description, FinancialAccountId = _dto.FinancialAccountId,
+                    Tags = _dto.Tags, Group = _dto.Group, InvoiceNumber = _dto.InvoiceNumber
+                });
+
+            if (result.IsSuccess) { Snackbar.Add(Item == null ? "ثبت شد" : "به‌روزرسانی شد", Severity.Success); MudDialog.Close(DialogResult.Ok(true)); }
+            else Snackbar.Add(result.Error ?? "خطا", Severity.Error);
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task AddAccount()
+    {
+        var dialog = await DialogService.ShowAsync<AccountDialog>("افزودن حساب مالی",
+            new DialogParameters { ["Account"] = (FinancialAccountDto?)null },
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (!result.Canceled)
+        {
+            _accounts = await AccountService.GetAllAsync();
+            _dto.FinancialAccountId = _accounts.LastOrDefault()?.Id;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

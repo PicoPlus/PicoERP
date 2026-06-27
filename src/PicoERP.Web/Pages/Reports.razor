@@ -1,0 +1,287 @@
+@page "/reports/income"
+@page "/reports/expense"
+@page "/reports/profit"
+@page "/reports/salary"
+@inject IReportService ReportService
+@inject IIncomeService IncomeService
+@inject IExpenseService ExpenseService
+@inject ISettingsService SettingsService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>گزارش‌ها — پیکو ERP</PageTitle>
+
+<div class="pico-page" dir="rtl">
+    <div class="page-header">
+        <div>
+            <MudText Typo="Typo.h4" Class="page-title">گزارش‌ها</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">تولید گزارش‌های مالی و صادرات</MudText>
+        </div>
+        <div class="header-actions">
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Print"
+                       OnClick="PrintPage" Class="print-btn no-print">چاپ</MudButton>
+        </div>
+    </div>
+
+    <!-- Report Type Tabs -->
+    <MudTabs @bind-ActivePanelIndex="_activeTab" Rounded="true" Class="mb-4" Color="Color.Primary" ApplyEffectsToContainer="true">
+        <MudTabPanel Text="گزارش درآمد" Icon="@Icons.Material.Filled.TrendingUp" />
+        <MudTabPanel Text="گزارش هزینه" Icon="@Icons.Material.Filled.TrendingDown" />
+        <MudTabPanel Text="گزارش سود" Icon="@Icons.Material.Filled.BarChart" />
+        <MudTabPanel Text="گزارش حقوق" Icon="@Icons.Material.Filled.Payments" />
+    </MudTabs>
+
+    <!-- Date Range Filter -->
+    <MudCard Elevation="1" Class="pico-card mb-4">
+        <MudCardContent>
+            <MudGrid Spacing="2" AlignItems="Center">
+                <MudItem xs="12" md="3">
+                    <MudSelect @bind-Value="_period" Label="دوره زمانی" Variant="Variant.Outlined" Margin="Margin.Dense">
+                        <MudSelectItem Value="@("today")">امروز</MudSelectItem>
+                        <MudSelectItem Value="@("week")">این هفته</MudSelectItem>
+                        <MudSelectItem Value="@("month")">این ماه</MudSelectItem>
+                        <MudSelectItem Value="@("year")">این سال</MudSelectItem>
+                        <MudSelectItem Value="@("custom")">سفارشی</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudDatePicker @bind-Date="_fromDate" Label="از تاریخ" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudDatePicker @bind-Date="_toDate" Label="تا تاریخ" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" md="5" Class="d-flex gap-2 flex-wrap">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Search"
+                               OnClick="LoadReport" Disabled="@_loading">مشاهده گزارش</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.PictureAsPdf"
+                               OnClick="ExportPdf" Disabled="@_loading" Class="no-print">PDF دریافت</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.TableChart"
+                               OnClick="ExportExcel" Disabled="@_loading" Class="no-print">Excel دریافت</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Info" StartIcon="@Icons.Material.Filled.Sms"
+                               OnClick="SendSmsReport" Disabled="@(_loading || _sendingSms)" Class="no-print">
+                        @(_sendingSms ? "در حال ارسال..." : "ارسال SMS")
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudCardContent>
+    </MudCard>
+
+    <!-- Summary Cards -->
+    @if (_summaryLoaded)
+    {
+        <MudGrid Spacing="3" Class="mb-4">
+            <MudItem xs="12" sm="4">
+                <StatCard Title="جمع درآمد" Value="@AppState.FormatAmount(_totalIncome)"
+                          Icon="@Icons.Material.Filled.TrendingUp" Color="#2E7D32" BgColor="#E8F5E9" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <StatCard Title="جمع هزینه" Value="@AppState.FormatAmount(_totalExpense)"
+                          Icon="@Icons.Material.Filled.TrendingDown" Color="#C62828" BgColor="#FFEBEE" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <StatCard Title="سود خالص" Value="@AppState.FormatAmount(_totalIncome - _totalExpense)"
+                          Icon="@Icons.Material.Filled.AccountBalance" Color="#1565C0" BgColor="#E3F2FD" />
+            </MudItem>
+        </MudGrid>
+    }
+
+    <!-- Income Table -->
+    @if (_activeTab == 0 && _incomes.Any())
+    {
+        <MudCard Elevation="2" Class="pico-card">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">گزارش درآمد — @PersianCalendar.ToPersianDate(_fromDate ?? DateTime.Today) تا @PersianCalendar.ToPersianDate(_toDate ?? DateTime.Today)</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent Class="pa-0">
+                <MudTable Items="_incomes" Dense="true" Hover="true" Striped="true">
+                    <HeaderContent>
+                        <MudTh>ردیف</MudTh><MudTh>تاریخ</MudTh><MudTh>دسته</MudTh><MudTh>توضیح</MudTh><MudTh>مبلغ</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@(_incomes.IndexOf(context) + 1)</MudTd>
+                        <MudTd>@AppState.FormatDateTime(context.Date)</MudTd>
+                        <MudTd>@context.CategoryName</MudTd>
+                        <MudTd>@(context.Description ?? "-")</MudTd>
+                        <MudTd><span class="amount-positive">@AppState.FormatAmount(context.Amount)</span></MudTd>
+                    </RowTemplate>
+                    <FooterContent>
+                        <MudTd colspan="4" Class="fw-bold">جمع کل:</MudTd>
+                        <MudTd><span class="amount-positive fw-bold">@AppState.FormatAmount(_incomes.Sum(i => i.Amount))</span></MudTd>
+                    </FooterContent>
+                </MudTable>
+            </MudCardContent>
+        </MudCard>
+    }
+
+    <!-- Expense Table -->
+    @if (_activeTab == 1 && _expenses.Any())
+    {
+        <MudCard Elevation="2" Class="pico-card">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">گزارش هزینه</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent Class="pa-0">
+                <MudTable Items="_expenses" Dense="true" Hover="true" Striped="true">
+                    <HeaderContent>
+                        <MudTh>ردیف</MudTh><MudTh>تاریخ</MudTh><MudTh>گروه</MudTh><MudTh>دسته</MudTh><MudTh>توضیح</MudTh><MudTh>مبلغ</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@(_expenses.IndexOf(context) + 1)</MudTd>
+                        <MudTd>@AppState.FormatDateTime(context.Date)</MudTd>
+                        <MudTd>@(context.Group == ExpenseGroup.Business ? "کاری" : context.Group == ExpenseGroup.Personal ? "شخصی" : "کارمند")</MudTd>
+                        <MudTd>@context.CategoryName</MudTd>
+                        <MudTd>@(context.Description ?? "-")</MudTd>
+                        <MudTd><span class="amount-negative">@AppState.FormatAmount(context.Amount)</span></MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudCardContent>
+        </MudCard>
+    }
+
+    @if (_loading)
+    {
+        <div class="loading-center">
+            <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+            <MudText Class="mt-2">در حال بارگذاری...</MudText>
+        </div>
+    }
+</div>
+
+@code {
+    private int _activeTab = 0;
+    private string _period = "month";
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
+    private bool _loading;
+    private bool _sendingSms;
+    private bool _summaryLoaded;
+    private decimal _totalIncome;
+    private decimal _totalExpense;
+    private List<IncomeDto> _incomes = new();
+    private List<ExpenseDto> _expenses = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        ApplyPeriod();
+        await LoadReport();
+    }
+
+    private void ApplyPeriod()
+    {
+        var now = DateTime.Now;
+        int pYear = PersianCalendar.GetPersianYear(now);
+        int pMonth = PersianCalendar.GetPersianMonth(now);
+        switch (_period)
+        {
+            case "today": _fromDate = now.Date; _toDate = now.Date; break;
+            case "week":
+                int d = ((int)now.DayOfWeek - 6 + 7) % 7;
+                _fromDate = now.Date.AddDays(-d);
+                _toDate = now.Date;
+                break;
+            case "month":
+                _fromDate = PersianCalendar.GetPersianMonthStart(pYear, pMonth);
+                _toDate = PersianCalendar.GetPersianMonthEnd(pYear, pMonth);
+                break;
+            case "year":
+                _fromDate = PersianCalendar.GetPersianYearStart(pYear);
+                _toDate = PersianCalendar.GetPersianYearEnd(pYear);
+                break;
+        }
+    }
+
+    private async Task LoadReport()
+    {
+        _loading = true;
+        StateHasChanged();
+        var from = _fromDate ?? DateTime.Today.AddDays(-30);
+        var to = _toDate ?? DateTime.Today;
+        _totalIncome = await IncomeService.GetTotalAsync(from, to);
+        _totalExpense = await ExpenseService.GetTotalAsync(from, to);
+        _summaryLoaded = true;
+
+        var incomes = await IncomeService.GetPagedAsync(new PaginationParams { PageSize = 500 }, from, to);
+        var expenses = await ExpenseService.GetPagedAsync(new PaginationParams { PageSize = 500 }, from, to);
+        _incomes = incomes.Items.ToList();
+        _expenses = expenses.Items.ToList();
+        _loading = false;
+    }
+
+    private async Task ExportPdf()
+    {
+        var from = _fromDate ?? DateTime.Today.AddDays(-30);
+        var to = _toDate ?? DateTime.Today;
+        byte[] pdf = _activeTab switch
+        {
+            0 => await ReportService.GenerateIncomePdfAsync(from, to),
+            1 => await ReportService.GenerateExpensePdfAsync(from, to),
+            2 => await ReportService.GenerateProfitPdfAsync(from, to),
+            3 => await ReportService.GenerateSalaryPdfAsync(from, to),
+            _ => Array.Empty<byte>()
+        };
+        if (pdf.Length > 0) Snackbar.Add("PDF آماده دانلود است", Severity.Success);
+        else Snackbar.Add("خطا در تولید PDF", Severity.Error);
+    }
+
+    private async Task ExportExcel()
+    {
+        var from = _fromDate ?? DateTime.Today.AddDays(-30);
+        var to = _toDate ?? DateTime.Today;
+        byte[] excel = _activeTab switch
+        {
+            0 => await ReportService.GenerateIncomeExcelAsync(from, to),
+            1 => await ReportService.GenerateExpenseExcelAsync(from, to),
+            2 => await ReportService.GenerateProfitExcelAsync(from, to),
+            _ => Array.Empty<byte>()
+        };
+        if (excel.Length > 0) Snackbar.Add("Excel آماده دانلود است", Severity.Success);
+        else Snackbar.Add("خطا در تولید Excel", Severity.Error);
+    }
+
+    private async Task SendSmsReport()
+    {
+        // Load admin phone lazily — use AppState if already loaded, else hit DB
+        var adminPhone = AppState.SmsAdminPhone;
+        if (string.IsNullOrWhiteSpace(adminPhone))
+            adminPhone = await SettingsService.GetAsync("Sms:AdminPhone") ?? "";
+
+        if (string.IsNullOrWhiteSpace(adminPhone))
+        {
+            Snackbar.Add("شماره موبایل مدیر تنظیم نشده است. لطفاً در صفحه تنظیمات وارد کنید.", Severity.Warning);
+            return;
+        }
+
+        var apiKey = AppState.SmsApiKey;
+        if (string.IsNullOrWhiteSpace(apiKey))
+            apiKey = await SettingsService.GetAsync("Sms:ApiKey") ?? "";
+
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            Snackbar.Add("کلید API پیامک تنظیم نشده است. لطفاً در صفحه تنظیمات وارد کنید.", Severity.Warning);
+            return;
+        }
+
+        _sendingSms = true;
+        var reportType = _activeTab switch { 0 => "income", 1 => "expense", 2 => "profit", 3 => "salary", _ => "profit" };
+        var from = _fromDate ?? DateTime.Today.AddDays(-30);
+        var to   = _toDate ?? DateTime.Today;
+        var result = await ReportService.SendReportSmsAsync(reportType, from, to, adminPhone);
+        _sendingSms = false;
+
+        Snackbar.Add(result.IsSuccess
+            ? $"گزارش با موفقیت به {adminPhone} ارسال شد ✓"
+            : $"خطا در ارسال پیامک: {result.Error}",
+            result.IsSuccess ? Severity.Success : Severity.Error);
+    }
+
+    private async Task PrintPage()
+    {
+        await JS.InvokeVoidAsync("window.print");
+    }
+}

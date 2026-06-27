@@ -1,0 +1,204 @@
+@page "/salaries"
+@inject ISalaryService SalaryService
+@inject IEmployeeService EmployeeService
+@inject IFinancialAccountService AccountService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>حقوق و دستمزد — پیکو ERP</PageTitle>
+
+<div class="pico-page" dir="rtl">
+    <div class="page-header">
+        <div>
+            <MudText Typo="Typo.h4" Class="page-title">حقوق و دستمزد</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">مدیریت فیش حقوقی و پرداخت‌ها</MudText>
+        </div>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="@(() => OpenDialog(null))">ثبت حقوق جدید</MudButton>
+    </div>
+
+    <!-- Unpaid Salaries per Employee -->
+    @if (_unpaidPerEmployee.Any())
+    {
+        <MudCard Elevation="1" Class="pico-card mb-4" Style="border-right: 4px solid #E65100;">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6" Style="color:#E65100;">
+                        <MudIcon Icon="@Icons.Material.Filled.Warning" Class="ml-2" Style="vertical-align:middle;" />
+                        مانده حقوق پرداخت‌نشده کارمندان
+                    </MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent Class="pa-0">
+                <MudSimpleTable Dense="true" Hover="true">
+                    <thead>
+                        <tr>
+                            <th>کارمند</th>
+                            <th>سمت</th>
+                            <th style="text-align:left;">مانده بدهکار</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var emp in _employees.Where(e => _unpaidPerEmployee.ContainsKey(e.Id)))
+                        {
+                            <tr>
+                                <td>@emp.FullName</td>
+                                <td><MudText Typo="Typo.caption">@emp.Position</MudText></td>
+                                <td class="amount-negative" style="text-align:left;">
+                                    <strong>@AppState.FormatAmount(_unpaidPerEmployee[emp.Id])</strong>
+                                </td>
+                            </tr>
+                        }
+                        <tr style="background:#FFF3E0;">
+                            <td colspan="2"><strong>جمع کل</strong></td>
+                            <td class="amount-negative" style="text-align:left;">
+                                <strong>@AppState.FormatAmount(_unpaidPerEmployee.Values.Sum())</strong>
+                            </td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudCardContent>
+        </MudCard>
+    }
+
+    <!-- Salary Records Table -->
+    <MudCard Elevation="2" Class="pico-card">
+        <MudCardContent Class="pa-0">
+            @if (_loading)
+            {
+                @for (int i = 0; i < 5; i++) { <MudSkeleton Height="48px" /> }
+            }
+            else if (_result?.Items.Any() == true)
+            {
+                <MudTable Items="_result.Items" Dense="true" Hover="true" Striped="true"
+                          FixedHeader="true" Height="500px">
+                    <HeaderContent>
+                        <MudTh>کارمند</MudTh>
+                        <MudTh>سمت</MudTh>
+                        <MudTh>دوره</MudTh>
+                        <MudTh>حقوق پایه</MudTh>
+                        <MudTh>خالص</MudTh>
+                        <MudTh>وضعیت</MudTh>
+                        <MudTh>عملیات</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.EmployeeName</MudTd>
+                        <MudTd><MudText Typo="Typo.caption">@context.Position</MudText></MudTd>
+                        <MudTd dir="ltr">@AppState.FormatDate(context.PeriodFrom) — @AppState.FormatDate(context.PeriodTo)</MudTd>
+                        <MudTd>@AppState.FormatAmount(context.BaseSalary)</MudTd>
+                        <MudTd><strong class="@(context.NetSalary >= 0 ? "amount-positive" : "amount-negative")">@AppState.FormatAmount(context.NetSalary)</strong></MudTd>
+                        <MudTd>
+                            <MudChip T="string" Size="Size.Small" Color="@(context.IsPaid ? Color.Success : Color.Warning)" Variant="Variant.Filled">
+                                @(context.IsPaid ? "پرداخت شده" : "در انتظار پرداخت")
+                            </MudChip>
+                        </MudTd>
+                        <MudTd>
+                            @if (!context.IsPaid)
+                            {
+                                <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Success"
+                                           OnClick="@(() => MarkPaid(context))">پرداخت</MudButton>
+                            }
+                            <MudIconButton Icon="@Icons.Material.Filled.Print" Size="Size.Small" Color="Color.Info"
+                                           OnClick="@(() => PrintSlip(context))" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                           OnClick="@(() => DeleteSalary(context))" />
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+            else
+            {
+                <div class="empty-state">
+                    <MudIcon Icon="@Icons.Material.Filled.Payments" Style="font-size:64px; color:#90CAF9;" />
+                    <h3>فیش حقوقی ثبت نشده</h3>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => OpenDialog(null))">ثبت اولین حقوق</MudButton>
+                </div>
+            }
+        </MudCardContent>
+        @if (_result?.TotalPages > 1)
+        {
+            <MudCardActions Class="justify-center">
+                <MudPagination Count="@_result.TotalPages" Selected="_paging.Page" Color="Color.Primary"
+                               SelectedChanged="@(v => { _paging.Page = v; _ = Reload(); })" />
+            </MudCardActions>
+        }
+    </MudCard>
+</div>
+
+@code {
+    private PagedResult<SalaryPaymentDto>? _result;
+    private List<EmployeeDto> _employees = new();
+    private List<FinancialAccountDto> _accounts = new();
+    private PaginationParams _paging = new() { PageSize = 20 };
+    private Dictionary<int, decimal> _unpaidPerEmployee = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _employees = await EmployeeService.GetAllActiveAsync();
+        _accounts  = await AccountService.GetAllAsync();
+
+        // Auto-generate salary records for the current Persian month for Fixed-salary employees
+        var generated = await SalaryService.AutoGenerateCurrentMonthAsync(
+            AppState.CurrentUser?.DisplayName ?? "system");
+        if (generated > 0)
+            Snackbar.Add($"حقوق {generated} کارمند برای ماه جاری ثبت شد", Severity.Info);
+
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        _loading = true;
+        StateHasChanged();
+        _result             = await SalaryService.GetPagedAsync(_paging);
+        _unpaidPerEmployee  = await SalaryService.GetUnpaidPerEmployeeAsync();
+        _loading = false;
+    }
+
+    private async Task OpenDialog(SalaryPaymentDto? item)
+    {
+        var parameters = new DialogParameters
+        {
+            ["Item"]      = item,
+            ["Employees"] = _employees,
+            ["Accounts"]  = _accounts,
+            ["Username"]  = AppState.CurrentUser?.DisplayName ?? "system"
+        };
+        var dialog = await DialogService.ShowAsync<SalaryDialog>("ثبت حقوق", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        if (!result.Canceled) await Reload();
+    }
+
+    private async Task MarkPaid(SalaryPaymentDto item)
+    {
+        if (!_accounts.Any()) { Snackbar.Add("هیچ حسابی تعریف نشده", Severity.Warning); return; }
+        var confirm = await DialogService.ShowMessageBox("پرداخت حقوق",
+            $"پرداخت حقوق {item.EmployeeName}؟", yesText: "بله", cancelText: "خیر");
+        if (confirm == true)
+        {
+            var result = await SalaryService.MarkAsPaidAsync(item.Id, _accounts.First().Id);
+            if (result.IsSuccess) { Snackbar.Add("پرداخت ثبت شد", Severity.Success); await Reload(); }
+            else Snackbar.Add(result.Error ?? "خطا", Severity.Error);
+        }
+    }
+
+    private async Task PrintSlip(SalaryPaymentDto item)
+    {
+        var pdf = await SalaryService.GenerateSlipPdfAsync(item.Id);
+        if (pdf.Length > 0) Snackbar.Add("فیش حقوقی آماده شد", Severity.Info);
+    }
+
+    private async Task DeleteSalary(SalaryPaymentDto item)
+    {
+        var confirm = await DialogService.ShowMessageBox("حذف", "حذف شود؟",
+            yesText: "بله", cancelText: "خیر");
+        if (confirm == true)
+        {
+            var result = await SalaryService.DeleteAsync(item.Id);
+            if (result.IsSuccess) { Snackbar.Add("حذف شد", Severity.Success); await Reload(); }
+        }
+    }
+}

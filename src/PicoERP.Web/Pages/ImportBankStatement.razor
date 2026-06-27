@@ -1,0 +1,775 @@
+@page "/bank-statement-import"
+@inject IBankStatementImportService ImportService
+@inject IFinancialAccountService AccountService
+@inject IIncomeService IncomeService
+@inject IExpenseService ExpenseService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+@using PicoERP.Application.DTOs
+
+<PageTitle>ورود اطلاعات صورت‌حساب بانکی — پیکو ERP</PageTitle>
+
+<div class="pico-page" dir="rtl">
+    <div class="page-header">
+        <div>
+            <MudText Typo="Typo.h4" Class="page-title">ورود اطلاعات صورت‌حساب بانکی</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                بارگذاری فایل Excel صورت‌حساب بانکی و وارد کردن تراکنش‌ها به سیستم
+            </MudText>
+        </div>
+    </div>
+
+    @if (_accounts == null)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else
+    {
+        <MudStepper @ref="_stepper"
+                    @bind-ActiveIndex="_activeStep"
+                    NonLinear="false"
+                    Class="mb-4">
+
+            <ActionContent Context="_"><span></span></ActionContent>
+
+            <ChildContent>
+
+            <!-- ── Step 1: Upload & Settings ──────────────────────────────── -->
+            <MudStep Title="انتخاب فایل و تنظیمات">
+                <MudCard Elevation="1" Class="pico-card">
+                    <MudCardContent>
+                        <MudGrid Spacing="3" dir="rtl">
+
+                            <MudItem xs="12" md="4">
+                                <MudSelect @bind-Value="_bankKey" Label="نوع بانک"
+                                           Variant="Variant.Outlined" Margin="Margin.Dense" Required="true">
+                                    @foreach (var bank in _banks)
+                                    {
+                                        <MudSelectItem Value="@bank.Key">@bank.DisplayName</MudSelectItem>
+                                    }
+                                </MudSelect>
+                            </MudItem>
+
+                            <MudItem xs="12" md="4">
+                                <MudSelect @bind-Value="_financialAccountId" Label="حساب مالی"
+                                           Variant="Variant.Outlined" Margin="Margin.Dense" T="int" Required="true">
+                                    @foreach (var acc in _accounts)
+                                    {
+                                        <MudSelectItem Value="@acc.Id">@acc.Name</MudSelectItem>
+                                    }
+                                </MudSelect>
+                            </MudItem>
+
+                            <MudItem xs="6" md="2">
+                                <MudTextField @bind-Value="_startDatePersian"
+                                              Label="از تاریخ (شمسی)" Placeholder="1405/04/01"
+                                              Variant="Variant.Outlined" Margin="Margin.Dense"
+                                              Required="true" dir="ltr" />
+                            </MudItem>
+                            <MudItem xs="6" md="2">
+                                <MudTextField @bind-Value="_endDatePersian"
+                                              Label="تا تاریخ (شمسی)" Placeholder="1405/04/30"
+                                              Variant="Variant.Outlined" Margin="Margin.Dense"
+                                              Required="true" dir="ltr" />
+                            </MudItem>
+
+                            <MudItem xs="12">
+                                <MudText Typo="Typo.subtitle2" Class="mb-2">فایل Excel صورت‌حساب (.xlsx)</MudText>
+                                <div class="d-flex align-center" style="gap:12px; flex-wrap:wrap;">
+                                    <label for="xlsxUpload"
+                                           class="mud-button-root mud-button mud-button-outlined mud-button-outlined-primary mud-ripple"
+                                           style="cursor:pointer; padding:6px 16px; min-width:unset;">
+                                        <span class="mud-button-label">
+                                            <MudIcon Icon="@Icons.Material.Filled.UploadFile" Size="Size.Small" Class="ml-1" />
+                                            انتخاب فایل Excel
+                                        </span>
+                                    </label>
+                                    <InputFile id="xlsxUpload" OnChange="HandleFileSelected" accept=".xlsx"
+                                               style="visibility:hidden;position:fixed;top:-100px;left:-100px;width:1px;height:1px;" />
+                                    @if (_fileName is not null)
+                                    {
+                                        <MudChip T="string" Color="Color.Success" Size="Size.Small"
+                                                 Icon="@Icons.Material.Filled.CheckCircle">@_fileName</MudChip>
+                                    }
+                                </div>
+                            </MudItem>
+
+                            @if (_configError is not null)
+                            {
+                                <MudItem xs="12">
+                                    <MudAlert Severity="Severity.Error" Dense="true">@_configError</MudAlert>
+                                </MudItem>
+                            }
+
+                            <MudItem xs="12" Class="d-flex justify-end">
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                           Disabled="@(!CanPreview || _previewing)"
+                                           OnClick="RunPreview"
+                                           StartIcon="@Icons.Material.Filled.Visibility">
+                                    @if (_previewing)
+                                    {
+                                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="ml-1" />
+                                    }
+                                    پیش‌نمایش تراکنش‌ها
+                                </MudButton>
+                            </MudItem>
+
+                        </MudGrid>
+                    </MudCardContent>
+                </MudCard>
+            </MudStep>
+
+            <!-- ── Step 2: Classify & Preview ─────────────────────────────── -->
+            <MudStep Title="تعیین تکلیف تراکنش‌ها">
+                @if (_preview is not null)
+                {
+                    <!-- Summary bar -->
+                    <div class="d-flex flex-wrap mb-3" style="gap:8px;" dir="rtl">
+                        <MudChip T="string" Color="Color.Default" Icon="@Icons.Material.Filled.TableRows">
+                            جمع کل: @_preview.TotalRowsInFile ردیف
+                        </MudChip>
+                        <MudChip T="string" Color="Color.Success" Icon="@Icons.Material.Filled.CheckCircle">
+                            قابل وارد کردن: @ActiveCount
+                        </MudChip>
+                        <MudChip T="string" Color="Color.Warning" Icon="@Icons.Material.Filled.ContentCopy">
+                            تکراری: @_preview.DuplicateRows
+                        </MudChip>
+                        <MudChip T="string" Color="Color.Info" Icon="@Icons.Material.Filled.FilterAlt">
+                            خارج از بازه: @_preview.IgnoredRows
+                        </MudChip>
+                        <MudChip T="string" Color="Color.Success" Icon="@Icons.Material.Filled.CallReceived">
+                            واریز: @FormatBankAmount(IncomeTotal)
+                        </MudChip>
+                        <MudChip T="string" Color="Color.Error" Icon="@Icons.Material.Filled.CallMade">
+                            برداشت: @FormatBankAmount(ExpenseTotal)
+                        </MudChip>
+                    </div>
+
+                    <!-- Bulk-assign toolbar -->
+                    <MudCard Elevation="0" Class="mb-3" Style="border:1px solid var(--mud-palette-divider); border-radius:6px;">
+                        <MudCardContent Class="py-2">
+                            <div class="d-flex align-center flex-wrap" style="gap:12px;" dir="rtl">
+                                <MudText Typo="Typo.subtitle2">تعیین دسته‌جمعی:</MudText>
+                                <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Success"
+                                           OnClick="@(() => BulkSetAction(BankStatementRowAction.Income))"
+                                           StartIcon="@Icons.Material.Filled.CallReceived">
+                                    همه واریزها = درآمد
+                                </MudButton>
+                                <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Error"
+                                           OnClick="@(() => BulkSetAction(BankStatementRowAction.Expense))"
+                                           StartIcon="@Icons.Material.Filled.CallMade">
+                                    همه برداشت‌ها = هزینه
+                                </MudButton>
+                                <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default"
+                                           OnClick="@(() => BulkSetAction(null))"
+                                           StartIcon="@Icons.Material.Filled.Block">
+                                    نادیده گرفتن همه
+                                </MudButton>
+                            </div>
+                        </MudCardContent>
+                    </MudCard>
+                    <!-- Transfer legend -->
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2" Icon="@Icons.Material.Filled.SwapHoriz">
+                        تراکنش‌هایی که نه درآمد هستند و نه هزینه (مثل پول برای کارمند یا پرداخت خلافی مشتری) را روی
+                        <strong>انتقال</strong> بگذارید و حساب مقصد را انتخاب کنید. مانده‌ای که باقی بماند درآمد محسوب می‌شود.
+                    </MudAlert>
+
+                    <!-- Per-row classification table -->
+                    <div style="overflow-x:auto;">
+                    <table style="width:100%; border-collapse:collapse; font-size:13px;" dir="rtl">
+                        <thead>
+                            <tr style="background:var(--mud-palette-table-striped); font-weight:600; border-bottom:2px solid var(--mud-palette-divider);">
+                                <th style="padding:8px 10px; text-align:right;">تاریخ</th>
+                                <th style="padding:8px 10px; text-align:right;">شرح</th>
+                                <th style="padding:8px 10px; text-align:right;">نوع</th>
+                                <th style="padding:8px 10px; text-align:left; color:#2E7D32;">واریز (@AppState.CurrencyUnit)</th>
+                                <th style="padding:8px 10px; text-align:left; color:#C62828;">برداشت (@AppState.CurrencyUnit)</th>
+                                <th style="padding:8px 10px; text-align:right; min-width:140px;">تعیین تکلیف</th>
+                                <th style="padding:8px 10px; text-align:right; min-width:170px;">دسته‌بندی</th>
+                                <th style="padding:8px 10px; text-align:center; min-width:80px;">تقسیم</th>
+                                <th style="padding:8px 10px; text-align:center;">وضعیت</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _preview.Rows)
+                            {
+                                var totalAmount = row.WithdrawalAmount > 0 ? row.WithdrawalAmount : row.DepositAmount;
+                                var splitSum    = row.Splits.Sum(s => s.Amount);
+                                var splitRemainder = totalAmount - splitSum;
+                                var rowStyle = row.IsDuplicate
+                                    ? "background:#fff8e1; opacity:0.65;"
+                                    : row.Splits.Count > 0
+                                        ? "background:#f3e5f5;"
+                                        : row.Action == BankStatementRowAction.Income
+                                            ? "background:#f1f8e9;"
+                                            : row.Action == BankStatementRowAction.Expense
+                                                ? "background:#fce4ec;"
+                                                : row.Action == BankStatementRowAction.Transfer
+                                                    ? "background:#e3f2fd;"
+                                                    : "";
+
+                                <!-- Main row -->
+                                <tr style="border-bottom:@(row.IsSplitting ? "none" : "1px solid var(--mud-palette-divider)"); @rowStyle">
+                                    <td style="padding:6px 10px;" dir="ltr">
+                                        <span style="font-size:12px;">@row.TransactionDateRaw</span>
+                                    </td>
+                                    <td style="padding:6px 10px; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+                                        title="@row.Description">
+                                        @(row.Description ?? row.TransactionType ?? "—")
+                                    </td>
+                                    <td style="padding:6px 10px; font-size:12px;">@(row.TransactionType ?? "—")</td>
+                                    <td style="padding:6px 10px; text-align:left; font-weight:600; color:#2E7D32;" dir="ltr">
+                                        @(row.DepositAmount > 0 ? FormatBankAmount(row.DepositAmount) : "—")
+                                    </td>
+                                    <td style="padding:6px 10px; text-align:left; font-weight:600; color:#C62828;" dir="ltr">
+                                        @(row.WithdrawalAmount > 0 ? FormatBankAmount(row.WithdrawalAmount) : "—")
+                                    </td>
+
+                                    <!-- Action selector (disabled when splitting) -->
+                                    <td style="padding:4px 6px;">
+                                        @if (!row.IsDuplicate && row.Splits.Count == 0)
+                                        {
+                                            <MudSelect Value="row.Action"
+                                                       ValueChanged="@((BankStatementRowAction a) => { row.Action = a; if (a == BankStatementRowAction.Ignore) { row.CategoryId = null; row.ToAccountId = null; } if (a != BankStatementRowAction.Transfer) row.ToAccountId = null; })"
+                                                       T="BankStatementRowAction"
+                                                       Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                       Style="min-width:120px; font-size:12px;">
+                                                <MudSelectItem Value="BankStatementRowAction.Income">
+                                                    <span style="color:#2E7D32;">● درآمد</span>
+                                                </MudSelectItem>
+                                                <MudSelectItem Value="BankStatementRowAction.Expense">
+                                                    <span style="color:#C62828;">● هزینه</span>
+                                                </MudSelectItem>
+                                                <MudSelectItem Value="BankStatementRowAction.Transfer">
+                                                    <span style="color:#1565C0;">⇄ انتقال</span>
+                                                </MudSelectItem>
+                                                <MudSelectItem Value="BankStatementRowAction.Ignore">
+                                                    <span style="color:#888;">○ نادیده</span>
+                                                </MudSelectItem>
+                                            </MudSelect>
+                                        }
+                                        else if (row.Splits.Count > 0)
+                                        {
+                                            <span style="color:#7B1FA2; font-size:12px; font-weight:600;">تقسیم‌شده (@row.Splits.Count)</span>
+                                        }
+                                        else if (row.IsDuplicate)
+                                        {
+                                            <span style="color:#F57C00; font-size:12px;">تکراری</span>
+                                        }
+                                    </td>
+
+                                    <!-- Category / ToAccount selector (hidden when splitting) -->
+                                    <td style="padding:4px 6px;">
+                                        @if (!row.IsDuplicate && row.Splits.Count == 0 && row.Action == BankStatementRowAction.Income)
+                                        {
+                                            <MudSelect Value="row.CategoryId" ValueChanged="@((int? v) => row.CategoryId = v)"
+                                                       T="int?" Placeholder="دسته درآمد"
+                                                       Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                       Style="min-width:150px; font-size:12px;" Clearable="true">
+                                                @foreach (var cat in _incomeCategories)
+                                                { <MudSelectItem Value="@((int?)cat.Id)">@cat.Name</MudSelectItem> }
+                                            </MudSelect>
+                                        }
+                                        else if (!row.IsDuplicate && row.Splits.Count == 0 && row.Action == BankStatementRowAction.Expense)
+                                        {
+                                            <MudSelect Value="row.CategoryId" ValueChanged="@((int? v) => row.CategoryId = v)"
+                                                       T="int?" Placeholder="دسته هزینه"
+                                                       Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                       Style="min-width:150px; font-size:12px;" Clearable="true">
+                                                @foreach (var cat in _expenseCategories)
+                                                { <MudSelectItem Value="@((int?)cat.Id)">@cat.Name</MudSelectItem> }
+                                            </MudSelect>
+                                        }
+                                        else if (!row.IsDuplicate && row.Splits.Count == 0 && row.Action == BankStatementRowAction.Transfer)
+                                        {
+                                            <MudSelect Value="row.ToAccountId" ValueChanged="@((int? v) => row.ToAccountId = v)"
+                                                       T="int?" Placeholder="حساب مقصد *"
+                                                       Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                       Style="min-width:150px; font-size:12px;" Clearable="true">
+                                                @foreach (var acc in (_accounts ?? new()).Where(a => a.Id != _financialAccountId))
+                                                { <MudSelectItem Value="@((int?)acc.Id)">@acc.Name</MudSelectItem> }
+                                            </MudSelect>
+                                        }
+                                        else
+                                        {
+                                            <span style="color:#bbb; font-size:12px;">—</span>
+                                        }
+                                    </td>
+
+                                    <!-- Split toggle button -->
+                                    <td style="padding:4px 6px; text-align:center;">
+                                        @if (!row.IsDuplicate)
+                                        {
+                                            @if (row.Splits.Count == 0 && !row.IsSplitting)
+                                            {
+                                                <MudTooltip Text="تقسیم این تراکنش به چند بخش">
+                                                    <MudIconButton Icon="@Icons.Material.Filled.CallSplit"
+                                                                   Size="Size.Small" Color="Color.Secondary"
+                                                                   OnClick="@(() => StartSplit(row))" />
+                                                </MudTooltip>
+                                            }
+                                            else
+                                            {
+                                                <MudIconButton Icon="@Icons.Material.Filled.Close"
+                                                               Size="Size.Small" Color="Color.Error"
+                                                               OnClick="@(() => CancelSplit(row))" />
+                                            }
+                                        }
+                                    </td>
+
+                                    <td style="padding:6px 10px; text-align:center;">
+                                        @if (row.IsDuplicate)
+                                        { <MudChip T="string" Size="Size.Small" Color="Color.Warning">تکراری</MudChip> }
+                                        else if (row.Splits.Count > 0)
+                                        { <MudChip T="string" Size="Size.Small" Color="Color.Secondary">تقسیم</MudChip> }
+                                        else if (row.Action == BankStatementRowAction.Ignore)
+                                        { <MudChip T="string" Size="Size.Small" Color="Color.Default">نادیده</MudChip> }
+                                        else if (row.Action == BankStatementRowAction.Income)
+                                        { <MudChip T="string" Size="Size.Small" Color="Color.Success">درآمد</MudChip> }
+                                        else if (row.Action == BankStatementRowAction.Transfer)
+                                        { <MudChip T="string" Size="Size.Small" Color="Color.Info">انتقال</MudChip> }
+                                        else
+                                        { <MudChip T="string" Size="Size.Small" Color="Color.Error">هزینه</MudChip> }
+                                    </td>
+                                </tr>
+
+                                <!-- Split editor rows (expanded inline) -->
+                                @if (!row.IsDuplicate && (row.IsSplitting || row.Splits.Count > 0))
+                                {
+                                    <tr style="border-bottom:1px solid var(--mud-palette-divider);">
+                                        <td colspan="9" style="padding:0; background:#fafafa;">
+                                            <div style="padding:10px 16px; border-right:4px solid #7B1FA2; margin:0 8px 8px 8px; border-radius:0 4px 4px 0;">
+                                                <div style="font-size:12px; font-weight:600; color:#7B1FA2; margin-bottom:6px;">
+                                                    تقسیم تراکنش — مجموع: @FormatBankAmount(totalAmount)
+                                                    @if (splitRemainder > 0)
+                                                    {
+                                                        <span style="color:#E65100; margin-right:8px;">| مانده تقسیم‌نشده: @FormatBankAmount(splitRemainder)</span>
+                                                    }
+                                                    else if (splitRemainder == 0 && row.Splits.Count > 0)
+                                                    {
+                                                        <span style="color:#2E7D32; margin-right:8px;">✓ تقسیم کامل</span>
+                                                    }
+                                                </div>
+
+                                                @foreach (var split in row.Splits)
+                                                {
+                                                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;" dir="rtl">
+                                                        <!-- Action -->
+                                                        <MudSelect Value="split.Action"
+                                                                   ValueChanged="@((BankStatementRowAction a) => { split.Action = a; if (a != BankStatementRowAction.Transfer) split.ToAccountId = null; })"
+                                                                   T="BankStatementRowAction"
+                                                                   Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                                   Style="min-width:100px; font-size:12px;">
+                                                            <MudSelectItem Value="BankStatementRowAction.Income"><span style="color:#2E7D32;">درآمد</span></MudSelectItem>
+                                                            <MudSelectItem Value="BankStatementRowAction.Expense"><span style="color:#C62828;">هزینه</span></MudSelectItem>
+                                                            <MudSelectItem Value="BankStatementRowAction.Transfer"><span style="color:#1565C0;">انتقال</span></MudSelectItem>
+                                                        </MudSelect>
+                                                        <!-- Amount -->
+                                                        <MudNumericField Value="split.Amount"
+                                                                         ValueChanged="@((decimal v) => split.Amount = v)"
+                                                                         T="decimal" Min="0"
+                                                                         Label="مبلغ" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                                         Style="max-width:140px; font-size:12px;" />
+                                                        <!-- Category / ToAccount -->
+                                                        @if (split.Action == BankStatementRowAction.Income)
+                                                        {
+                                                            <MudSelect Value="split.CategoryId"
+                                                                       ValueChanged="@((int? v) => split.CategoryId = v)"
+                                                                       T="int?" Placeholder="دسته درآمد"
+                                                                       Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                                       Style="min-width:140px; font-size:12px;" Clearable="true">
+                                                                @foreach (var cat in _incomeCategories)
+                                                                { <MudSelectItem Value="@((int?)cat.Id)">@cat.Name</MudSelectItem> }
+                                                            </MudSelect>
+                                                        }
+                                                        else if (split.Action == BankStatementRowAction.Transfer)
+                                                        {
+                                                            <MudSelect Value="split.ToAccountId"
+                                                                       ValueChanged="@((int? v) => split.ToAccountId = v)"
+                                                                       T="int?" Placeholder="حساب مقصد *"
+                                                                       Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                                       Style="min-width:140px; font-size:12px;" Clearable="true">
+                                                                @foreach (var acc in (_accounts ?? new()).Where(a => a.Id != _financialAccountId))
+                                                                { <MudSelectItem Value="@((int?)acc.Id)">@acc.Name</MudSelectItem> }
+                                                            </MudSelect>
+                                                        }
+                                                        else
+                                                        {
+                                                            <MudSelect Value="split.CategoryId"
+                                                                       ValueChanged="@((int? v) => split.CategoryId = v)"
+                                                                       T="int?" Placeholder="دسته هزینه"
+                                                                       Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                                       Style="min-width:140px; font-size:12px;" Clearable="true">
+                                                                @foreach (var cat in _expenseCategories)
+                                                                { <MudSelectItem Value="@((int?)cat.Id)">@cat.Name</MudSelectItem> }
+                                                            </MudSelect>
+                                                        }
+                                                        <!-- Description -->
+                                                        <MudTextField Value="split.Description"
+                                                                      ValueChanged="@((string? v) => split.Description = v)"
+                                                                      T="string?" Placeholder="توضیح (اختیاری)"
+                                                                      Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                                      Style="min-width:140px; font-size:12px;" />
+                                                        <!-- Remove split line -->
+                                                        <MudIconButton Icon="@Icons.Material.Filled.RemoveCircleOutline"
+                                                                       Size="Size.Small" Color="Color.Error"
+                                                                       OnClick="@(() => RemoveSplitLine(row, split))" />
+                                                    </div>
+                                                }
+
+                                                <div style="display:flex; gap:8px; margin-top:4px;" dir="rtl">
+                                                    <MudButton Size="Size.Small" Variant="Variant.Outlined"
+                                                               Color="Color.Secondary"
+                                                               StartIcon="@Icons.Material.Filled.Add"
+                                                               OnClick="@(() => AddSplitLine(row, splitRemainder))">
+                                                        افزودن بخش
+                                                    </MudButton>
+                                                    @if (row.Splits.Count > 0)
+                                                    {
+                                                        <MudButton Size="Size.Small" Variant="Variant.Filled"
+                                                                   Color="Color.Secondary"
+                                                                   StartIcon="@Icons.Material.Filled.Check"
+                                                                   OnClick="@(() => ConfirmSplit(row))">
+                                                            تأیید تقسیم
+                                                        </MudButton>
+                                                    }
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                    </div>
+
+                    <div class="d-flex mt-4" style="gap:8px;" dir="rtl">
+                        <MudButton Variant="Variant.Outlined" Color="Color.Default"
+                                   OnClick="GoBack"
+                                   StartIcon="@Icons.Material.Filled.ArrowBack">
+                            بازگشت
+                        </MudButton>
+                        <MudButton Variant="Variant.Filled" Color="Color.Success"
+                                   Disabled="@(ActiveCount == 0 || _committing)"
+                                   OnClick="RunCommit"
+                                   StartIcon="@Icons.Material.Filled.CloudUpload">
+                            @if (_committing)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="ml-1" />
+                            }
+                            وارد کردن @ActiveCount تراکنش
+                        </MudButton>
+                    </div>
+                }
+            </MudStep>
+
+            <!-- ── Step 3: Result ──────────────────────────────────────────── -->
+            <MudStep Title="نتیجه وارد کردن">
+                @if (_importResult is not null)
+                {
+                    <MudCard Elevation="1" Class="pico-card">
+                        <MudCardContent>
+                            @if (_importResult.IsSuccess)
+                            {
+                                <MudAlert Severity="Severity.Success" Class="mb-4">
+                                    تراکنش‌ها با موفقیت وارد شدند.
+                                </MudAlert>
+                            }
+                            else
+                            {
+                                <MudAlert Severity="Severity.Error" Class="mb-4">
+                                    خطا: @_importResult.Error
+                                </MudAlert>
+                            }
+
+                            <MudSimpleTable Dense="true" Style="max-width:520px;">
+                                <tbody>
+                                    <tr><td>جمع ردیف‌های فایل</td>
+                                        <td dir="ltr"><strong>@_importResult.TotalRowsInFile</strong></td></tr>
+                                    <tr><td>وارد شده (درآمد)</td>
+                                        <td dir="ltr" style="color:#2E7D32;"><strong>@_importResult.IncomeCount</strong></td></tr>
+                                    <tr><td>وارد شده (هزینه)</td>
+                                        <td dir="ltr" style="color:#C62828;"><strong>@_importResult.ExpenseCount</strong></td></tr>
+                                    <tr><td>ثبت انتقال</td>
+                                        <td dir="ltr" style="color:#1565C0;"><strong>@_importResult.TransferCount</strong></td></tr>
+                                    <tr><td>تکراری (رد شد)</td>
+                                        <td dir="ltr" style="color:#F57C00;"><strong>@_importResult.DuplicateRows</strong></td></tr>
+                                    <tr><td>نادیده گرفته شد</td>
+                                        <td dir="ltr" style="color:#888;"><strong>@_importResult.IgnoredRows</strong></td></tr>
+                                    <tr><td>جمع واریز ثبت‌شده</td>
+                                        <td dir="ltr" style="color:#2E7D32;"><strong>@FormatBankAmount(_importResult.TotalDeposits)</strong></td></tr>
+                                    <tr><td>جمع برداشت ثبت‌شده</td>
+                                        <td dir="ltr" style="color:#C62828;"><strong>@FormatBankAmount(_importResult.TotalWithdrawals)</strong></td></tr>
+                                </tbody>
+                            </MudSimpleTable>
+
+                            <MudButton Class="mt-4" Variant="Variant.Outlined" Color="Color.Primary"
+                                       OnClick="Reset"
+                                       StartIcon="@Icons.Material.Filled.Refresh">
+                                ورود صورت‌حساب جدید
+                            </MudButton>
+                        </MudCardContent>
+                    </MudCard>
+                }
+            </MudStep>
+
+            </ChildContent>
+        </MudStepper>
+    }
+</div>
+
+@code {
+    private MudStepper? _stepper;
+    private int _activeStep = 0;
+    private List<FinancialAccountDto>? _accounts;
+    private List<(string Key, string DisplayName)> _banks = new();
+    private List<IncomeCategoryDto> _incomeCategories = new();
+    private List<ExpenseCategoryDto> _expenseCategories = new();
+
+    // Step 1
+    private string _bankKey = "MelatBank";
+    private int _financialAccountId;
+    private string? _startDatePersian;
+    private string? _endDatePersian;
+    private byte[]? _fileBytes;
+    private string? _fileName;
+    private string? _configError;
+
+    // Step 2
+    private bool _previewing;
+    private BankStatementPreviewDto? _preview;
+
+    // Step 3
+    private bool _committing;
+    private BankStatementImportResultDto? _importResult;
+
+    // ── Computed ──────────────────────────────────────────────────────────────
+    // A row counts as "active" if it has splits OR a non-Ignore action
+    // For Transfer rows, ToAccountId must also be selected
+    private int ActiveCount => _preview?.Rows
+        .Count(r => !r.IsDuplicate &&
+            (r.Splits.Count > 0 ||
+             (r.Action != BankStatementRowAction.Ignore &&
+              (r.Action != BankStatementRowAction.Transfer || r.ToAccountId.HasValue)))) ?? 0;
+
+    private decimal IncomeTotal => _preview?.Rows
+        .Where(r => !r.IsDuplicate && r.Action == BankStatementRowAction.Income)
+        .Sum(r => r.DepositAmount) ?? 0;
+
+    private decimal ExpenseTotal => _preview?.Rows
+        .Where(r => !r.IsDuplicate && r.Action == BankStatementRowAction.Expense)
+        .Sum(r => r.WithdrawalAmount) ?? 0;
+
+    // Bank statement amounts — display as-is with the active currency unit label.
+    private string FormatBankAmount(decimal amount)
+        => AppState.FormatAmount(amount);
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+    {
+        _accounts          = await AccountService.GetAllAsync();
+        _banks             = ImportService.GetSupportedBanks().ToList();
+        _incomeCategories  = await IncomeService.GetCategoriesAsync();
+        _expenseCategories = await ExpenseService.GetCategoriesAsync();
+
+        if (_banks.Any())    _bankKey            = _banks[0].Key;
+        if (_accounts.Any()) _financialAccountId = _accounts[0].Id;
+    }
+
+    // ── Guard ─────────────────────────────────────────────────────────────────
+    private bool CanPreview =>
+        _fileBytes is { Length: > 0 } &&
+        _financialAccountId > 0 &&
+        !string.IsNullOrWhiteSpace(_startDatePersian) &&
+        !string.IsNullOrWhiteSpace(_endDatePersian);
+
+    // ── File selected ─────────────────────────────────────────────────────────
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        _configError = null;
+        var file = e.File;
+
+        if (!file.Name.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+        {
+            _configError = "فقط فایل‌های .xlsx پشتیبانی می‌شوند.";
+            return;
+        }
+
+        const long MaxBytes = 20 * 1024 * 1024;
+        if (file.Size > MaxBytes)
+        {
+            _configError = "حجم فایل بیش از ۲۰ مگابایت است.";
+            return;
+        }
+
+        using var ms = new System.IO.MemoryStream();
+        await file.OpenReadStream(MaxBytes).CopyToAsync(ms);
+        _fileBytes = ms.ToArray();
+        _fileName  = file.Name;
+    }
+
+    // ── Step 1 → 2: Preview ───────────────────────────────────────────────────
+    private async Task RunPreview()
+    {
+        _configError = null;
+        _preview     = null;
+        _previewing  = true;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var result = await ImportService.PreviewAsync(new BankStatementImportRequestDto
+            {
+                FileBytes          = _fileBytes!,
+                BankKey            = _bankKey,
+                FinancialAccountId = _financialAccountId,
+                StartDatePersian   = _startDatePersian,
+                EndDatePersian     = _endDatePersian,
+                ImportedBy         = AppState.CurrentUser?.DisplayName ?? "system",
+            });
+
+            if (!result.IsSuccess)
+            {
+                _configError = result.Error;
+                Snackbar.Add(result.Error!, Severity.Error);
+            }
+            else
+            {
+                _preview    = result.Data;
+                _activeStep = 1;
+            }
+        }
+        finally
+        {
+            _previewing = false;
+        }
+    }
+
+    // ── Split helpers ─────────────────────────────────────────────────────────
+
+    private void StartSplit(BankStatementRowDto row)
+    {
+        row.IsSplitting = true;
+        row.Splits.Clear();
+        var defaultAction = row.WithdrawalAmount > 0
+            ? BankStatementRowAction.Expense
+            : BankStatementRowAction.Income;
+        row.Splits.Add(new BankStatementSplitDto
+        {
+            Action     = defaultAction,
+            Amount     = row.WithdrawalAmount > 0 ? row.WithdrawalAmount : row.DepositAmount,
+            CategoryId = row.CategoryId
+        });
+    }
+
+    private void CancelSplit(BankStatementRowDto row)
+    {
+        row.IsSplitting = false;
+        row.Splits.Clear();
+    }
+
+    private void AddSplitLine(BankStatementRowDto row, decimal remainder)
+    {
+        var defaultAction = row.WithdrawalAmount > 0
+            ? BankStatementRowAction.Expense
+            : BankStatementRowAction.Income;
+        row.Splits.Add(new BankStatementSplitDto
+        {
+            Action = defaultAction,
+            Amount = remainder > 0 ? remainder : 0
+        });
+    }
+
+    private void RemoveSplitLine(BankStatementRowDto row, BankStatementSplitDto split)
+    {
+        row.Splits.Remove(split);
+        if (row.Splits.Count == 0)
+            row.IsSplitting = true;
+    }
+
+    private void ConfirmSplit(BankStatementRowDto row)
+    {
+        row.IsSplitting = false;
+        row.Action = BankStatementRowAction.Ignore;
+    }
+
+    // ── Bulk action helpers ───────────────────────────────────────────────────
+    private void BulkSetAction(BankStatementRowAction? action)
+    {
+        if (_preview is null) return;
+        foreach (var row in _preview.Rows.Where(r => !r.IsDuplicate))
+        {
+            if (action is null)
+            {
+                row.Action     = BankStatementRowAction.Ignore;
+                row.CategoryId = null;
+            }
+            else if (action == BankStatementRowAction.Income && row.DepositAmount > 0)
+            {
+                row.Action = BankStatementRowAction.Income;
+            }
+            else if (action == BankStatementRowAction.Expense && row.WithdrawalAmount > 0)
+            {
+                row.Action = BankStatementRowAction.Expense;
+            }
+        }
+    }
+
+    // ── Step 2 → 3: Commit ────────────────────────────────────────────────────
+    private async Task RunCommit()
+    {
+        _committing   = true;
+        _importResult = null;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var result = await ImportService.CommitAsync(new BankStatementCommitRequestDto
+            {
+                PreviewedRows      = _preview!.Rows,
+                BankKey            = _bankKey,
+                FinancialAccountId = _financialAccountId,
+                ImportedBy         = AppState.CurrentUser?.DisplayName ?? "system",
+            });
+
+            _importResult = result.IsSuccess
+                ? result.Data!
+                : new BankStatementImportResultDto { IsSuccess = false, Error = result.Error };
+
+            if (result.IsSuccess)
+            {
+                Snackbar.Add(
+                    $"{_importResult.IncomeCount} درآمد و {_importResult.ExpenseCount} هزینه وارد شد.",
+                    Severity.Success);
+                _activeStep = 2;
+            }
+            else
+            {
+                Snackbar.Add(result.Error!, Severity.Error);
+            }
+        }
+        finally
+        {
+            _committing = false;
+        }
+    }
+
+    // ── Navigation ────────────────────────────────────────────────────────────
+    private void GoBack()
+    {
+        _preview    = null;
+        _activeStep = 0;
+    }
+
+    private void Reset()
+    {
+        _fileBytes    = null;
+        _fileName     = null;
+        _configError  = null;
+        _preview      = null;
+        _importResult = null;
+        _previewing   = false;
+        _committing   = false;
+        _activeStep   = 0;
+    }
+}

@@ -1,0 +1,37 @@
+@* Real-time Persian clock widget *@
+<div class="pico-clock" dir="rtl">
+    <span class="clock-date">@_persianDate</span>
+    <span class="clock-sep">|</span>
+    <span class="clock-time">@_time</span>
+    <span class="clock-day">@_dayName</span>
+</div>
+
+@code {
+    private string _persianDate = "";
+    private string _time = "";
+    private string _dayName = "";
+    private System.Timers.Timer? _timer;
+
+    protected override void OnInitialized()
+    {
+        UpdateClock();
+        _timer = new System.Timers.Timer(1000);
+        _timer.Elapsed += async (_, _) =>
+        {
+            UpdateClock();
+            await InvokeAsync(StateHasChanged);
+        };
+        _timer.Start();
+    }
+
+    private void UpdateClock()
+    {
+        var now = DateTime.Now;
+        _persianDate = PicoERP.Domain.Common.PersianNumberFormatter.ToPersian(
+            PicoERP.Domain.Common.PersianCalendar.ToPersianDate(now));
+        _time = PicoERP.Domain.Common.PersianNumberFormatter.ToPersian(now.ToString("HH:mm:ss"));
+        _dayName = PicoERP.Domain.Common.PersianCalendar.GetPersianDayName(now.DayOfWeek);
+    }
+
+    public void Dispose() { _timer?.Dispose(); }
+}

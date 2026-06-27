@@ -1,0 +1,125 @@
+@page "/sms/outbox"
+@inject AppStateService AppState
+@inject ISmsService SmsService
+@inject ISettingsService SettingsService
+@inject ISnackbar Snackbar
+
+<PageTitle>گزارش صندوق صادره — پیکو ERP</PageTitle>
+
+<div class="pico-page" dir="rtl">
+
+    <div class="page-header">
+        <MudText Typo="Typo.h4" Class="page-title">گزارش صندوق صادره IPPanel</MudText>
+        <MudButton Variant="Variant.Outlined" Color="Color.Default"
+                   StartIcon="@Icons.Material.Filled.Sms"
+                   Href="/sms">
+            بازگشت به پیامک
+        </MudButton>
+    </div>
+
+    <MudCard Elevation="2" Class="pico-card">
+        <MudCardContent>
+            @if (_loading)
+            {
+                <div style="text-align:center;padding:40px;">
+                    <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+                </div>
+            }
+            else if (!_items.Any())
+            {
+                <div class="empty-state" style="padding:48px;text-align:center;">
+                    <MudIcon Icon="@Icons.Material.Filled.Outbox" Style="font-size:3.5rem;color:#d1d5db;" />
+                    <MudText Typo="Typo.h6" Color="Color.Secondary" Class="mt-2">هیچ رکوردی یافت نشد</MudText>
+                </div>
+            }
+            else
+            {
+                <MudTable Items="_items" Dense="true" Hover="true" Striped="true" Elevation="0">
+                    <HeaderContent>
+                        <MudTh>شماره ارسال</MudTh>
+                        <MudTh>خط</MudTh>
+                        <MudTh>متن پیام</MudTh>
+                        <MudTh>نوع</MudTh>
+                        <MudTh>تعداد گیرنده</MudTh>
+                        <MudTh>هزینه</MudTh>
+                        <MudTh>وضعیت</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd dir="ltr" Style="font-size:0.75rem;">@context.MessagesOutboxId</MudTd>
+                        <MudTd dir="ltr" Style="font-size:0.75rem;">@context.Number</MudTd>
+                        <MudTd Style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.8rem;">@context.Message</MudTd>
+                        <MudTd><MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Style="height:20px;font-size:0.65rem;">@context.Type</MudChip></MudTd>
+                        <MudTd Style="text-align:center;">@context.ExitCount / @context.RcptsCount</MudTd>
+                        <MudTd dir="ltr">@(context.Cost.HasValue ? context.Cost.Value.ToString("N0") : "—")</MudTd>
+                        <MudTd>
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
+                                     Color="@GetStateColor(context.StateId)"
+                                     Style="height:20px;font-size:0.65rem;">
+                                @GetStateLabel(context.StateId)
+                            </MudChip>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+
+                <div style="display:flex;justify-content:center;gap:8px;margin-top:16px;">
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                               Disabled="@(_page == 1 || _loading)"
+                               OnClick="PrevPage">قبلی</MudButton>
+                    <MudText Typo="Typo.body2" Style="line-height:2.5;">صفحه @_page</MudText>
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                               Disabled="@(_items.Count < _pageSize || _loading)"
+                               OnClick="NextPage">بعدی</MudButton>
+                </div>
+            }
+        </MudCardContent>
+    </MudCard>
+</div>
+
+@code {
+    private List<IpPanelOutboxReportDto> _items = new();
+    private bool _loading;
+    private int _page = 1;
+    private const int _pageSize = 20;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrWhiteSpace(AppState.SmsApiKey))
+            AppState.SmsApiKey = await SettingsService.GetAsync("Sms:ApiKey") ?? "";
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrWhiteSpace(AppState.SmsApiKey)) return;
+        _loading = true;
+        try { _items = await SmsService.GetOutboxReportAsync(AppState.SmsApiKey, _page, _pageSize); }
+        catch { _items = new(); }
+        finally { _loading = false; StateHasChanged(); }
+    }
+
+    private async Task PrevPage() { if (_page > 1) { _page--; await LoadAsync(); } }
+    private async Task NextPage() { _page++; await LoadAsync(); }
+
+    private Color GetStateColor(int? stateId) => stateId switch
+    {
+        6 => Color.Success,
+        3 or 4 or 7 or 9 => Color.Error,
+        8 => Color.Warning,
+        _ => Color.Default
+    };
+
+    private string GetStateLabel(int? stateId) => stateId switch
+    {
+        0 => "در حال ساخت",
+        1 => "در صف نظارت",
+        2 => "در حال ارسال",
+        3 => "رد شده",
+        4 => "شماره نامعتبر",
+        5 => "در صف ارسال",
+        6 => "ارسال شد",
+        7 => "لغو شد",
+        8 => "کمبود اعتبار",
+        9 => "خطای سیستمی",
+        _ => "نامشخص"
+    };
+}

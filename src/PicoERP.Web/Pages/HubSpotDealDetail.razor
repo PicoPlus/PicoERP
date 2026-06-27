@@ -1,0 +1,666 @@
+@page "/deal/{DealId}"
+@inject AppStateService AppState
+@inject IHubSpotService HubSpotService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Nav
+@using PicoERP.Web.Services
+@using Microsoft.AspNetCore.Components.Forms
+
+<PageTitle>جزئیات دیل — پیکو ERP</PageTitle>
+
+<style>
+    .deal-hero {
+        background: linear-gradient(135deg, #0091AE 0%, #005f73 100%);
+        border-radius: 16px 16px 0 0;
+        padding: 28px 24px 20px;
+        color: #fff;
+        position: relative;
+        overflow: hidden;
+    }
+    .deal-hero::before {
+        content: "";
+        position: absolute;
+        top: -40px; right: -40px;
+        width: 160px; height: 160px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.07);
+    }
+    .deal-hero-icon {
+        width: 68px; height: 68px;
+        border-radius: 16px;
+        background: rgba(255,255,255,0.18);
+        border: 2px solid rgba(255,255,255,0.4);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 2rem;
+        flex-shrink: 0;
+    }
+    .deal-stat-chip {
+        display: inline-flex; align-items: center; gap: 4px;
+        background: rgba(255,255,255,0.18);
+        border-radius: 20px; padding: 4px 12px;
+        font-size: 0.8rem; margin: 3px;
+    }
+    .deal-info-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0;
+    }
+    .deal-info-cell {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--mud-palette-divider);
+    }
+    .deal-info-cell:nth-child(odd) { border-left: 1px solid var(--mud-palette-divider); }
+    .deal-info-label { font-size: 0.72rem; color: var(--mud-palette-text-secondary); margin-bottom: 2px; }
+    .deal-info-value { font-weight: 600; font-size: 0.9rem; }
+    .note-card {
+        border-right: 3px solid #0091AE;
+        background: var(--mud-palette-surface);
+        border-radius: 6px;
+        padding: 12px 16px;
+        margin-bottom: 10px;
+    }
+    .call-card {
+        border-right: 3px solid #2563eb;
+        background: var(--mud-palette-surface);
+        border-radius: 6px;
+        padding: 12px 16px;
+        margin-bottom: 10px;
+    }
+    .tab-content-scroll { max-height: 480px; overflow-y: auto; padding: 4px 0; }
+</style>
+
+<div class="pico-page" dir="rtl">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
+        <MudIconButton Icon="@Icons.Material.Filled.ArrowForward"
+                       OnClick="@(() => Nav.NavigateTo("/deals"))"
+                       Variant="Variant.Text" />
+        <div>
+            <MudText Typo="Typo.h4" Class="page-title">
+                @(_deal?.DealName ?? "در حال بارگذاری...")
+            </MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary" dir="ltr">
+                ID: @DealId
+            </MudText>
+        </div>
+        @if (_loading)
+        {
+            <MudProgressCircular Indeterminate="true" Color="Color.Primary"
+                                 Size="Size.Small" Style="margin-right:auto;" />
+        }
+        @if (_deal != null && _apiConfigured)
+        {
+            <div Class="header-actions" style="margin-right:auto;display:flex;gap:8px;">
+                <MudButton Variant="Variant.Outlined"
+                           StartIcon="@Icons.Material.Filled.Edit"
+                           OnClick="OpenEditDialog"
+                           Class="no-print">
+                    ویرایش
+                </MudButton>
+            </div>
+        }
+    </div>
+
+    @if (_loading && _deal == null)
+    {
+        <div class="loading-center" style="height:300px;">
+            <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Large" />
+        </div>
+    }
+    else if (_deal == null)
+    {
+        <MudAlert Severity="Severity.Error">دیل مورد نظر یافت نشد.</MudAlert>
+    }
+    else
+    {
+        <MudGrid Spacing="3">
+            <!-- ──────── LEFT: Deal card ──────── -->
+            <MudItem xs="12" md="4">
+                <MudCard Elevation="3" Class="mb-4" Style="border-radius:16px;overflow:hidden;">
+                    <!-- Hero -->
+                    <div class="deal-hero">
+                        <div style="display:flex;align-items:flex-start;gap:16px;position:relative;z-index:1;">
+                            <div class="deal-hero-icon">
+                                <MudIcon Icon="@Icons.Material.Filled.Handshake" Style="color:#fff;font-size:2rem;" />
+                            </div>
+                            <div style="flex:1;">
+                                <div style="font-size:1.25rem;font-weight:800;line-height:1.2;margin-bottom:6px;">
+                                    @_deal.DealName
+                                </div>
+                                <div>
+                                    <span class="deal-stat-chip">
+                                        @AppState.FormatAmount(_deal.Amount)
+                                        @if (!string.IsNullOrWhiteSpace(_deal.Currency) && _deal.Currency != "IRR")
+                                        {<span style="opacity:.7;font-size:.7rem;"> @_deal.Currency</span>}
+                                    </span>
+                                    <span class="deal-stat-chip" style="background:rgba(255,255,255,.25);">
+                                        @(GetStageLabel(_deal.Stage))
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Info grid -->
+                    <div class="deal-info-grid">
+                        @DealInfoCell("تاریخ بستن",
+                            _deal.CloseDate.HasValue ? AppState.FormatDate(_deal.CloseDate.Value) : null,
+                            Icons.Material.Filled.Event)
+                        @DealInfoCell("تاریخ ایجاد",
+                            _deal.CreateDate.HasValue ? AppState.FormatDate(_deal.CreateDate.Value) : null,
+                            Icons.Material.Filled.CalendarToday)
+                        @DealInfoCell("شناسه هاب‌اسپات", _deal.Id, Icons.Material.Filled.Tag)
+                        @DealInfoCell("مرحله", GetStageLabel(_deal.Stage), Icons.Material.Filled.Stairs)
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(_deal.Description))
+                    {
+                        <div style="padding:12px 16px;border-top:1px solid var(--mud-palette-divider);">
+                            <div class="deal-info-label">توضیحات</div>
+                            <div style="font-size:.875rem;">@_deal.Description</div>
+                        </div>
+                    }
+                </MudCard>
+
+                <!-- Associated contact -->
+                <MudCard Elevation="2" Class="pico-card" Style="border-radius:12px;">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">
+                                <MudIcon Icon="@Icons.Material.Filled.Person"
+                                         Style="vertical-align:middle;margin-left:6px;color:#FF7A59;" />
+                                مخاطب مرتبط
+                            </MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        @if (string.IsNullOrWhiteSpace(_deal.AssociatedContactId))
+                        {
+                            <div class="empty-state-sm">
+                                <MudIcon Icon="@Icons.Material.Filled.PersonOff" />
+                                <span>هیچ مخاطبی مرتبط نیست</span>
+                            </div>
+                            @if (_apiConfigured)
+                            {
+                                <MudButton Variant="Variant.Outlined" FullWidth="true"
+                                           StartIcon="@Icons.Material.Filled.PersonAdd"
+                                           Color="Color.Primary" Class="mt-3"
+                                           OnClick="OpenAssociateContactDialog">
+                                    مرتبط کردن مخاطب
+                                </MudButton>
+                            }
+                        }
+                        else
+                        {
+                            <div style="display:flex;align-items:center;gap:12px;">
+                                <MudAvatar Size="Size.Large"
+                                           Style="background:#FF7A59;color:#fff;font-size:1.3rem;font-weight:700;flex-shrink:0;">
+                                    @((_deal.ContactFirstName ?? "?").Substring(0, 1).ToUpper())
+                                </MudAvatar>
+                                <div>
+                                    <div style="font-weight:700;font-size:1rem;">
+                                        @($"{_deal.ContactFirstName} {_deal.ContactLastName}".Trim())
+                                    </div>
+                                    @if (!string.IsNullOrWhiteSpace(_deal.ContactEmail))
+                                    {<div style="font-size:.8rem;color:#6b7280;" dir="ltr">@_deal.ContactEmail</div>}
+                                    @if (!string.IsNullOrWhiteSpace(_deal.ContactPhone))
+                                    {<div style="font-size:.8rem;color:#6b7280;" dir="ltr">@_deal.ContactPhone</div>}
+                                    @if (!string.IsNullOrWhiteSpace(_deal.ContactCompany))
+                                    {<div style="font-size:.8rem;">@_deal.ContactCompany</div>}
+                                </div>
+                            </div>
+                            <MudButton Variant="Variant.Outlined" FullWidth="true" Class="mt-3"
+                                       StartIcon="@Icons.Material.Filled.OpenInNew"
+                                       Color="Color.Primary"
+                                       OnClick="@(() => Nav.NavigateTo($"/contact-profile/{_deal.AssociatedContactId}"))">
+                                مشاهده پروفایل
+                            </MudButton>
+                        }
+                    </MudCardContent>
+                </MudCard>
+
+                <!-- Line items card -->
+                @if (_deal.LineItems.Any())
+                {
+                    <MudCard Elevation="2" Class="pico-card mt-4" Style="border-radius:12px;">
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.h6">
+                                    <MudIcon Icon="@Icons.Material.Filled.Inventory"
+                                             Style="vertical-align:middle;margin-left:6px;" />
+                                    اقلام (@_deal.LineItems.Count)
+                                </MudText>
+                            </CardHeaderContent>
+                        </MudCardHeader>
+                        <MudCardContent Class="pa-0">
+                            <MudTable Items="_deal.LineItems" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
+                                <HeaderContent>
+                                    <MudTh>نام</MudTh>
+                                    <MudTh>تعداد</MudTh>
+                                    <MudTh>قیمت</MudTh>
+                                    <MudTh>جمع</MudTh>
+                                </HeaderContent>
+                                <RowTemplate>
+                                    <MudTd>
+                                        <div style="font-weight:600;font-size:.875rem;">@(context.Name ?? "—")</div>
+                                        @if (!string.IsNullOrWhiteSpace(context.Sku))
+                                        {<MudText Typo="Typo.caption" Color="Color.Secondary">SKU: @context.Sku</MudText>}
+                                    </MudTd>
+                                    <MudTd>@context.Quantity</MudTd>
+                                    <MudTd>@AppState.FormatAmount(context.UnitPrice)</MudTd>
+                                    <MudTd><span class="amount-positive">@AppState.FormatAmount(context.Amount)</span></MudTd>
+                                </RowTemplate>
+                            </MudTable>
+                            <div style="padding:10px 16px;display:flex;justify-content:flex-end;gap:12px;border-top:1px solid var(--mud-palette-divider);">
+                                <MudText Typo="Typo.body2" Style="font-weight:700;">جمع کل:</MudText>
+                                <MudText Typo="Typo.body1" Style="font-weight:800;color:#2E7D32;">
+                                    @AppState.FormatAmount(_deal.LineItems.Sum(x => x.Amount))
+                                </MudText>
+                            </div>
+                        </MudCardContent>
+                    </MudCard>
+                }
+            </MudItem>
+
+            <!-- ──────── RIGHT: Tabs ──────── -->
+            <MudItem xs="12" md="8">
+                <MudCard Elevation="2" Class="pico-card" Style="border-radius:16px;overflow:hidden;">
+                    <MudTabs Elevation="0" Rounded="false" ApplyEffectsToContainer="false"
+                             PanelClass="pa-0" ActivePanelIndexChanged="OnTabChanged"
+                             Style="border-bottom:1px solid var(--mud-palette-divider);">
+
+                        <!-- ── Tab 1: Notes ── -->
+                        <MudTabPanel Text="یادداشت‌ها" Icon="@Icons.Material.Filled.Note"
+                                     BadgeData="@(_notes.Count > 0 ? _notes.Count.ToString() : null)" BadgeColor="Color.Warning">
+                            <div class="tab-content-scroll pa-3">
+                                @if (_apiConfigured)
+                                {
+                                    @if (!_showAddNote)
+                                    {
+                                        <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                                                   StartIcon="@Icons.Material.Filled.Add"
+                                                   Class="mb-3" FullWidth="true"
+                                                   OnClick="@(() => _showAddNote = true)">
+                                            افزودن یادداشت جدید
+                                        </MudButton>
+                                    }
+                                    else
+                                    {
+                                        <MudPaper Elevation="0" Class="mb-3"
+                                                  Style="border:1px solid #0091AE;border-radius:8px;padding:16px;">
+                                            <MudTextField @bind-Value="_newNote"
+                                                          Label="متن یادداشت"
+                                                          Variant="Variant.Outlined"
+                                                          Lines="3" AutoGrow="true"
+                                                          Placeholder="یادداشت خود را وارد کنید..." />
+                                            <div style="display:flex;gap:8px;margin-top:8px;justify-content:flex-end;">
+                                                <MudButton Size="Size.Small" Variant="Variant.Text"
+                                                           OnClick="@(() => { _showAddNote = false; _newNote = ""; })">انصراف</MudButton>
+                                                <MudButton Size="Size.Small" Variant="Variant.Filled"
+                                                           Color="Color.Primary"
+                                                           StartIcon="@Icons.Material.Filled.Save"
+                                                           OnClick="AddNote"
+                                                           Disabled="@(_savingNote || string.IsNullOrWhiteSpace(_newNote))">
+                                                    @(_savingNote ? "ذخیره..." : "ذخیره یادداشت")
+                                                </MudButton>
+                                            </div>
+                                        </MudPaper>
+                                    }
+                                }
+                                @if (_loadingNotes)
+                                {
+                                    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-3"/>
+                                }
+                                else if (!_notes.Any())
+                                {
+                                    <div class="empty-state-sm">
+                                        <MudIcon Icon="@Icons.Material.Filled.NoteAdd" />
+                                        <span>هنوز یادداشتی ثبت نشده</span>
+                                    </div>
+                                }
+                                else
+                                {
+                                    @foreach (var note in _notes)
+                                    {
+                                        <div class="note-card">
+                                            <MudText Typo="Typo.body2" Style="white-space:pre-wrap;">@note.Body</MudText>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                                                @(note.CreatedAt.HasValue ? AppState.FormatDateTime(note.CreatedAt.Value) : "")
+                                            </MudText>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </MudTabPanel>
+
+                        <!-- ── Tab 2: Calls ── -->
+                        <MudTabPanel Text="تماس‌ها" Icon="@Icons.Material.Filled.Call"
+                                     BadgeData="@(_calls.Count > 0 ? _calls.Count.ToString() : null)" BadgeColor="Color.Info">
+                            <div class="tab-content-scroll pa-3">
+                                @if (_loadingCalls)
+                                {
+                                    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-3" />
+                                    <MudSkeleton Height="60px" Class="mb-2" />
+                                    <MudSkeleton Height="60px" />
+                                }
+                                else if (!_calls.Any())
+                                {
+                                    <div class="empty-state-sm" style="padding-top:32px;">
+                                        <MudIcon Icon="@Icons.Material.Filled.PhoneCallback" Style="font-size:3rem;color:#d1d5db;" />
+                                        <span style="margin-top:8px;color:#9ca3af;">هیچ تماسی ثبت نشده</span>
+                                        <MudButton Variant="Variant.Outlined" Size="Size.Small" Class="mt-3"
+                                                   StartIcon="@Icons.Material.Filled.Refresh"
+                                                   OnClick="LoadCallsAsync">
+                                            بارگذاری مجدد
+                                        </MudButton>
+                                    </div>
+                                }
+                                else
+                                {
+                                    @foreach (var call in _calls)
+                                    {
+                                        <div class="call-card">
+                                            <div style="display:flex;align-items:center;gap:10px;">
+                                                <div style="width:36px;height:36px;border-radius:50%;background:#dbeafe;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                                    <MudIcon Icon="@(call.Direction == "INBOUND" ? Icons.Material.Filled.CallReceived : Icons.Material.Filled.CallMade)"
+                                                             Style="color:#2563eb;font-size:1rem;" />
+                                                </div>
+                                                <div style="flex:1;">
+                                                    <div style="font-weight:600;font-size:.875rem;">
+                                                        @(call.Title ?? call.Body ?? "تماس")
+                                                    </div>
+                                                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px;">
+                                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                            @(call.CreatedAt.HasValue ? AppState.FormatDateTime(call.CreatedAt.Value) : "")
+                                                        </MudText>
+                                                        @if (call.DurationSeconds.HasValue)
+                                                        {
+                                                            <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Style="height:18px;font-size:.65rem;" dir="ltr">
+                                                                @($"{call.DurationSeconds / 60}:{call.DurationSeconds % 60:D2}")
+                                                            </MudChip>
+                                                        }
+                                                        @if (!string.IsNullOrWhiteSpace(call.Status))
+                                                        {
+                                                            <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
+                                                                     Color="@(call.Status == "COMPLETED" ? Color.Success : Color.Default)"
+                                                                     Style="height:18px;font-size:.65rem;">
+                                                                @call.Status
+                                                            </MudChip>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </MudTabPanel>
+
+                        <!-- ── Tab 3: Files ── -->
+                        <MudTabPanel Text="فایل‌ها" Icon="@Icons.Material.Filled.AttachFile"
+                                     BadgeData="@(_files.Count > 0 ? _files.Count.ToString() : null)" BadgeColor="Color.Secondary">
+                            <div class="tab-content-scroll pa-3">
+                                @if (_apiConfigured)
+                                {
+                                    <div style="margin-bottom:12px;">
+                                        <InputFile id="deal-file-upload" OnChange="OnFileSelected" hidden />
+                                        <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                                                   StartIcon="@Icons.Material.Filled.Upload"
+                                                   Color="Color.Primary" FullWidth="true"
+                                                   Disabled="@_uploadingFile"
+                                                   OnClick="@(() => { })">
+                                            <label for="deal-file-upload" style="cursor:pointer;width:100%;display:flex;align-items:center;justify-content:center;gap:6px;">
+                                                @(_uploadingFile ? "در حال آپلود..." : "آپلود فایل جدید")
+                                            </label>
+                                        </MudButton>
+                                    </div>
+                                }
+                                @if (_loadingFiles)
+                                {
+                                    <MudProgressLinear Indeterminate="true" Color="Color.Secondary" Class="mb-3" />
+                                }
+                                else if (!_files.Any())
+                                {
+                                    <div class="empty-state-sm" style="padding-top:32px;">
+                                        <MudIcon Icon="@Icons.Material.Filled.FolderOpen" Style="font-size:3rem;color:#d1d5db;" />
+                                        <span style="margin-top:8px;color:#9ca3af;">هنوز فایلی پیوست نشده</span>
+                                    </div>
+                                }
+                                else
+                                {
+                                    @foreach (var file in _files)
+                                    {
+                                        <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--mud-palette-divider);border-radius:8px;margin-bottom:8px;">
+                                            <MudIcon Icon="@Icons.Material.Filled.InsertDriveFile"
+                                                     Style="color:#6b7280;font-size:1.5rem;flex-shrink:0;" />
+                                            <div style="flex:1;min-width:0;">
+                                                <div style="font-weight:600;font-size:.875rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                                                    @file.Name
+                                                </div>
+                                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                    @(file.CreatedAt.HasValue ? AppState.FormatDate(file.CreatedAt.Value) : "")
+                                                    @if (file.Size.HasValue)
+                                                    {<span> · @FormatFileSize(file.Size.Value)</span>}
+                                                </MudText>
+                                            </div>
+                                            @if (!string.IsNullOrWhiteSpace(file.Url))
+                                            {
+                                                <MudIconButton Icon="@Icons.Material.Filled.Download"
+                                                               Size="Size.Small" Color="Color.Primary"
+                                                               OnClick="@(() => DownloadFile(file.Url!))" />
+                                            }
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </MudTabPanel>
+
+                    </MudTabs>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+    }
+</div>
+
+@code {
+    [Parameter] public string DealId { get; set; } = string.Empty;
+
+    private HubSpotDealDto? _deal;
+    private List<HubSpotDealStageDto> _stages = new();
+    private List<HubSpotNoteDto>      _notes  = new();
+    private List<HubSpotCallDto>      _calls  = new();
+    private List<HubSpotFileDto>      _files  = new();
+
+    private bool _loading       = true;
+    private bool _loadingNotes  = true;
+    private bool _loadingCalls  = false;
+    private bool _loadingFiles  = false;
+    private bool _uploadingFile = false;
+    private bool _showAddNote;
+    private string _newNote = "";
+    private bool _savingNote;
+
+    private string _apiKey => AppState.HubSpotApiKey;
+    private bool   _apiConfigured => !string.IsNullOrWhiteSpace(_apiKey);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrWhiteSpace(AppState.HubSpotApiKey))
+            AppState.HubSpotApiKey = await HubSpotService.GetApiKeyAsync() ?? "";
+
+        if (_apiConfigured)
+        {
+            _deal = await HubSpotService.GetDealByIdAsync(_apiKey, DealId);
+            try { _stages = await HubSpotService.GetDealStagesAsync(_apiKey); } catch { }
+        }
+        _loading = false;
+
+        if (_apiConfigured && _deal != null)
+            await LoadNotesAsync();
+    }
+
+    private async Task LoadNotesAsync()
+    {
+        _loadingNotes = true;
+        try   { _notes = await HubSpotService.GetDealNotesAsync(_apiKey, DealId); }
+        catch { _notes = new(); }
+        finally { _loadingNotes = false; StateHasChanged(); }
+    }
+
+    private async Task LoadCallsAsync()
+    {
+        _loadingCalls = true;
+        StateHasChanged();
+        try   { _calls = await HubSpotService.GetDealCallsAsync(_apiKey, DealId); }
+        catch { _calls = new(); }
+        finally { _loadingCalls = false; StateHasChanged(); }
+    }
+
+    private async Task LoadFilesAsync()
+    {
+        _loadingFiles = true;
+        StateHasChanged();
+        try   { _files = await HubSpotService.GetFilesForObjectAsync(_apiKey, "deals", DealId); }
+        catch { _files = new(); }
+        finally { _loadingFiles = false; StateHasChanged(); }
+    }
+
+    private async Task OnTabChanged(int idx)
+    {
+        if (!_apiConfigured) return;
+        if (idx == 1 && !_calls.Any() && !_loadingCalls)
+            await LoadCallsAsync();
+        if (idx == 2 && !_files.Any() && !_loadingFiles)
+            await LoadFilesAsync();
+    }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        if (!_apiConfigured) return;
+        var file = e.File;
+        if (file == null) return;
+        _uploadingFile = true;
+        StateHasChanged();
+        try
+        {
+            using var ms = new System.IO.MemoryStream();
+            await file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024).CopyToAsync(ms);
+            var bytes    = ms.ToArray();
+            var mimeType = file.ContentType ?? "application/octet-stream";
+            var uploaded = await HubSpotService.UploadFileAsync(_apiKey, file.Name, bytes, mimeType);
+            // Save as a note so it shows up in the object's file list
+            await HubSpotService.AddNoteAsync(_apiKey,
+                $"[FILE] {uploaded.Name}|{uploaded.Url}", DealId, null);
+            _files.Insert(0, uploaded);
+            Snackbar.Add("فایل با موفقیت آپلود شد ✓", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در آپلود: {ex.Message}", Severity.Error);
+        }
+        finally { _uploadingFile = false; StateHasChanged(); }
+    }
+
+    private void DownloadFile(string url)
+    {
+        Nav.NavigateTo(url, forceLoad: true);
+    }
+
+    private void ToggleAddNote() { _showAddNote = !_showAddNote; _newNote = ""; }
+
+    private async Task AddNote()
+    {
+        if (string.IsNullOrWhiteSpace(_newNote)) return;
+        _savingNote = true;
+        try
+        {
+            var contactId = _deal?.AssociatedContactId;
+            await HubSpotService.AddNoteAsync(_apiKey, _newNote, DealId, contactId);
+            Snackbar.Add("یادداشت ذخیره شد ✓", Severity.Success);
+            _showAddNote = false;
+            _newNote = "";
+            await LoadNotesAsync();
+        }
+        catch (Exception ex) { Snackbar.Add($"خطا: {ex.Message}", Severity.Error); }
+        finally { _savingNote = false; }
+    }
+
+    private async Task OpenAssociateContactDialog()
+    {
+        if (_deal == null) return;
+        var parameters = new DialogParameters
+        {
+            ["ApiKey"]       = _apiKey,
+            ["IsEdit"]       = true,
+            ["ExistingDeal"] = _deal
+        };
+        var dialog = await DialogService.ShowAsync<DealCreateDialog>(
+            "مرتبط کردن مخاطب با دیل", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            Snackbar.Add("دیل به‌روز شد ✓", Severity.Success);
+            _loading = true;
+            _deal = await HubSpotService.GetDealByIdAsync(_apiKey, DealId);
+            _loading = false;
+        }
+    }
+
+    private async Task OpenEditDialog()
+    {
+        if (_deal == null) return;
+        var parameters = new DialogParameters
+        {
+            ["ApiKey"]       = _apiKey,
+            ["IsEdit"]       = true,
+            ["ExistingDeal"] = _deal
+        };
+        var dialog = await DialogService.ShowAsync<DealCreateDialog>(
+            "ویرایش دیل", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            Snackbar.Add("دیل ویرایش شد ✓", Severity.Success);
+            _loading = true;
+            _deal = await HubSpotService.GetDealByIdAsync(_apiKey, DealId);
+            _loading = false;
+        }
+    }
+
+    private string GetStageLabel(string? stageId)
+    {
+        if (string.IsNullOrWhiteSpace(stageId)) return "—";
+        return _stages.FirstOrDefault(s => s.Id == stageId)?.Label ?? stageId;
+    }
+
+    private Color GetStageColor(string? stageId) => stageId switch
+    {
+        "closedwon"    => Color.Success,
+        "closedlost"   => Color.Error,
+        "contractsent" => Color.Warning,
+        _              => Color.Primary
+    };
+
+    private static string FormatFileSize(long bytes) =>
+        bytes switch
+        {
+            < 1024                => $"{bytes} B",
+            < 1024 * 1024         => $"{bytes / 1024.0:F1} KB",
+            _                     => $"{bytes / (1024.0 * 1024):F1} MB"
+        };
+
+    private RenderFragment DealInfoCell(string label, string? value, string icon) => __builder =>
+    {
+        <div class="deal-info-cell">
+            <div class="deal-info-label">
+                <MudIcon Icon="@icon" Size="Size.Small" Style="vertical-align:middle;margin-left:3px;" />
+                @label
+            </div>
+            <div class="deal-info-value" dir="ltr" style="text-align:right;">
+                @(string.IsNullOrWhiteSpace(value) ? "—" : value)
+            </div>
+        </div>;
+    };
+}

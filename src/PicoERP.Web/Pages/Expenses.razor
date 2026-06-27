@@ -1,0 +1,218 @@
+@page "/expenses"
+@inject IExpenseService ExpenseService
+@inject IFinancialAccountService AccountService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>هزینه‌ها — پیکو ERP</PageTitle>
+
+<div class="pico-page" dir="rtl">
+    <div class="page-header">
+        <div>
+            <MudText Typo="Typo.h4" Class="page-title">مدیریت هزینه‌ها</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">ثبت و پیگیری تمام هزینه‌های کسب‌وکار</MudText>
+        </div>
+        <MudButton Variant="Variant.Filled" Color="Color.Error" StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="@(() => OpenDialog(null))">ثبت هزینه جدید</MudButton>
+    </div>
+
+    <!-- Group Filter Tabs -->
+    <MudTabs @bind-ActivePanelIndex="_activeTab" Rounded="true" Class="mb-4" Color="Color.Primary">
+        <MudTabPanel Text="همه" Icon="@Icons.Material.Filled.AllInbox" />
+        <MudTabPanel Text="هزینه کاری" Icon="@Icons.Material.Filled.Business" />
+        <MudTabPanel Text="هزینه شخصی" Icon="@Icons.Material.Filled.Person" />
+        <MudTabPanel Text="هزینه کارمند" Icon="@Icons.Material.Filled.Badge" />
+    </MudTabs>
+
+    <!-- Filters -->
+    <MudCard Elevation="1" Class="pico-card mb-4">
+        <MudCardContent>
+            <MudGrid Spacing="2" AlignItems="Center">
+                <MudItem xs="12" md="3">
+                    <MudTextField @bind-Value="_paging.Search" Label="جستجو..." Variant="Variant.Outlined"
+                                  Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+                                  Margin="Margin.Dense" Immediate="true" TextChanged="@(_ => Reload())" />
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudDatePicker Date="_fromDate" Label="از تاریخ" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                   DateChanged="@(v => { _fromDate = v; _ = Reload(); })" />
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudDatePicker Date="_toDate" Label="تا تاریخ" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                   DateChanged="@(v => { _toDate = v; _ = Reload(); })" />
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudSelect @bind-Value="_selectedCategoryId" Label="دسته‌بندی" Variant="Variant.Outlined"
+                               Margin="Margin.Dense" T="int?" Clearable="true">
+                        @foreach (var cat in _filteredCategories)
+                        {
+                            <MudSelectItem Value="@((int?)cat.Id)">@cat.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="2">
+                    <MudButton Variant="Variant.Outlined" FullWidth="true" OnClick="ResetFilters">پاک کردن</MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudCardContent>
+    </MudCard>
+
+    <!-- Summary -->
+    <div class="pico-summary-bar mb-4">
+        <div class="summary-item">
+            <span>جمع کل:</span>
+            <span class="amount-negative fw-bold">@AppState.FormatAmount(_result?.Items.Sum(i => i.Amount) ?? 0)</span>
+        </div>
+        <div class="summary-item">
+            <span>تعداد رکورد:</span>
+            <span class="fw-bold">@PersianNumberFormatter.ToPersian((_result?.TotalCount ?? 0).ToString())</span>
+        </div>
+    </div>
+
+    <!-- Table -->
+    <MudCard Elevation="2" Class="pico-card">
+        <MudCardContent Class="pa-0">
+            @if (_loading)
+            {
+                @for (int i = 0; i < 5; i++) { <MudSkeleton Height="48px" /> }
+            }
+            else if (_result?.Items.Any() == true)
+            {
+                <MudTable Items="_result.Items" Dense="true" Hover="true" Striped="true"
+                          FixedHeader="true" Height="500px" Style="border-radius:12px;">
+                    <HeaderContent>
+                        <MudTh>ردیف</MudTh>
+                        <MudTh>تاریخ</MudTh>
+                        <MudTh>گروه</MudTh>
+                        <MudTh>دسته‌بندی</MudTh>
+                        <MudTh>توضیح</MudTh>
+                        <MudTh>حساب</MudTh>
+                        <MudTh>مبلغ</MudTh>
+                        <MudTh>عملیات</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@PersianNumberFormatter.ToPersian((_result.Items.ToList().IndexOf(context) + 1).ToString())</MudTd>
+                        <MudTd dir="ltr">@AppState.FormatDateTime(context.Date)</MudTd>
+                        <MudTd>
+                            <MudChip T="string" Size="Size.Small" Color="@GetGroupColor(context.Group)" Variant="Variant.Outlined">
+                                @GetGroupPersian(context.Group)
+                            </MudChip>
+                        </MudTd>
+                        <MudTd>@context.CategoryName</MudTd>
+                        <MudTd>@(context.Description ?? "-")</MudTd>
+                        <MudTd>@(context.AccountName ?? "-")</MudTd>
+                        <MudTd><span class="amount-negative fw-bold">@AppState.FormatAmount(context.Amount)</span></MudTd>
+                        <MudTd>
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" OnClick="@(() => OpenDialog(context))" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteItem(context))" />
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+            else
+            {
+                <div class="empty-state">
+                    <MudIcon Icon="@Icons.Material.Filled.MoneyOff" Style="font-size:64px; color:#EF9A9A;" />
+                    <h3>هیچ هزینه‌ای یافت نشد</h3>
+                    <p>برای ثبت هزینه کلیک کنید</p>
+                    <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="@(() => OpenDialog(null))">ثبت هزینه</MudButton>
+                </div>
+            }
+        </MudCardContent>
+        @if (_result != null && _result.TotalPages > 1)
+        {
+            <MudCardActions Class="justify-center">
+                <MudPagination Count="@_result.TotalPages" Selected="_paging.Page" Color="Color.Primary"
+                               SelectedChanged="@(v => { _paging.Page = v; _ = Reload(); })" />
+            </MudCardActions>
+        }
+    </MudCard>
+</div>
+
+@code {
+    private PagedResult<ExpenseDto>? _result;
+    private List<ExpenseCategoryDto> _categories = new();
+    private List<ExpenseCategoryDto> _filteredCategories = new();
+    private List<FinancialAccountDto> _accounts = new();
+    private PaginationParams _paging = new() { PageSize = 20 };
+    private DateTime? _fromDate, _toDate;
+    private int? _selectedCategoryId;
+    private int _activeTab = 0;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _categories = await ExpenseService.GetCategoriesAsync();
+        _accounts = await AccountService.GetAllAsync();
+        await Reload();
+    }
+
+    protected override void OnParametersSet()
+    {
+        UpdateFilteredCategories();
+    }
+
+    private void UpdateFilteredCategories()
+    {
+        _filteredCategories = _activeTab switch
+        {
+            1 => _categories.Where(c => c.Group == ExpenseGroup.Business).ToList(),
+            2 => _categories.Where(c => c.Group == ExpenseGroup.Personal).ToList(),
+            3 => _categories.Where(c => c.Group == ExpenseGroup.Employee).ToList(),
+            _ => _categories
+        };
+    }
+
+    private async Task Reload()
+    {
+        _loading = true;
+        StateHasChanged();
+        ExpenseGroup? group = _activeTab switch { 1 => ExpenseGroup.Business, 2 => ExpenseGroup.Personal, 3 => ExpenseGroup.Employee, _ => null };
+        _result = await ExpenseService.GetPagedAsync(_paging, _fromDate, _toDate, _selectedCategoryId, group);
+        _loading = false;
+    }
+
+    private void ResetFilters() { _paging.Search = null; _fromDate = null; _toDate = null; _selectedCategoryId = null; _ = Reload(); }
+
+    private async Task OpenDialog(ExpenseDto? item)
+    {
+        var parameters = new DialogParameters
+        {
+            ["Item"] = item,
+            ["Categories"] = _categories,
+            ["Accounts"] = _accounts,
+            ["Username"] = AppState.CurrentUser?.DisplayName ?? "system"
+        };
+        var dialog = await DialogService.ShowAsync<ExpenseDialog>(item == null ? "ثبت هزینه جدید" : "ویرایش هزینه", parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (!result.Canceled) await Reload();
+    }
+
+    private async Task DeleteItem(ExpenseDto item)
+    {
+        var confirm = await DialogService.ShowMessageBox("حذف هزینه", "آیا این هزینه حذف شود؟", yesText: "بله", cancelText: "خیر");
+        if (confirm == true)
+        {
+            var result = await ExpenseService.DeleteAsync(item.Id);
+            if (result.IsSuccess) { Snackbar.Add("حذف شد", Severity.Success); await Reload(); }
+            else Snackbar.Add(result.Error ?? "خطا", Severity.Error);
+        }
+    }
+
+    private static Color GetGroupColor(ExpenseGroup g) => g switch
+    {
+        ExpenseGroup.Business => Color.Primary,
+        ExpenseGroup.Personal => Color.Warning,
+        ExpenseGroup.Employee => Color.Secondary,
+        _ => Color.Default
+    };
+
+    private static string GetGroupPersian(ExpenseGroup g) => g switch
+    {
+        ExpenseGroup.Business => "کاری",
+        ExpenseGroup.Personal => "شخصی",
+        ExpenseGroup.Employee => "کارمند",
+        _ => ""
+    };
+}

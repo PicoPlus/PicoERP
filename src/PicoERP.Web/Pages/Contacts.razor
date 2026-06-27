@@ -1,0 +1,297 @@
+@page "/contacts"
+@inject AppStateService AppState
+@inject IHubSpotService HubSpotService
+@inject PicoERP.Infrastructure.Persistence.AppDbContext Db
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Nav
+@using Microsoft.EntityFrameworkCore
+@using PicoERP.Domain.Entities
+@using PicoERP.Web.Services
+
+<PageTitle>مخاطبین CRM — پیکو ERP</PageTitle>
+
+<div class="pico-page" dir="rtl">
+    <div class="page-header">
+        <div>
+            <MudText Typo="Typo.h4" Class="page-title">مخاطبین CRM</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                مدیریت مخاطبین هاب‌اسپات — ایجاد، ویرایش و مشاهده پروفایل
+            </MudText>
+        </div>
+        <div class="header-actions">
+            @if (_syncing)
+            {
+                <div style="display:flex;align-items:center;gap:6px;font-size:0.8rem;color:#15803d;">
+                    <MudProgressCircular Indeterminate="true" Color="Color.Success" Size="Size.Small" />
+                    <span>همگام‌سازی با هاب‌اسپات...</span>
+                </div>
+            }
+            <MudButton Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Filled.Refresh"
+                       OnClick="LoadContacts"
+                       Disabled="@(_loading || _syncing)"
+                       Class="no-print ml-2">
+                بروزرسانی
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.PersonAdd"
+                       OnClick="OpenCreateDialog"
+                       Disabled="@(!_apiConfigured)"
+                       Class="no-print">
+                افزودن مخاطب
+            </MudButton>
+        </div>
+    </div>
+
+    @if (!_apiConfigured)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4">
+            کلید API هاب‌اسپات تنظیم نشده.
+            <MudLink Href="/settings" Color="Color.Warning">رفتن به تنظیمات</MudLink>
+        </MudAlert>
+    }
+
+    <MudCard Elevation="2" Class="pico-card">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h6">
+                    <MudIcon Icon="@Icons.Material.Filled.People" Style="vertical-align:middle; margin-left:6px;" />
+                    مخاطبین (@_filtered.Count() نفر)
+                </MudText>
+            </CardHeaderContent>
+            <CardHeaderActions>
+                <MudTextField @bind-Value="_search" Placeholder="جستجو (نام، کد ملی، موبایل...)"
+                              Variant="Variant.Outlined" Margin="Margin.Dense"
+                              Adornment="Adornment.End"
+                              AdornmentIcon="@Icons.Material.Filled.Search"
+                              Style="min-width:240px;" Immediate="true"
+                              TextChanged="@(_ => { _page = 1; StateHasChanged(); })" />
+            </CardHeaderActions>
+        </MudCardHeader>
+        <MudCardContent Class="pa-0">
+            @if (_loading)
+            {
+                <div class="loading-center">
+                    <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+                </div>
+            }
+            else if (!_filtered.Any())
+            {
+                <div class="empty-state-sm">
+                    <MudIcon Icon="@Icons.Material.Filled.PersonSearch" />
+                    <span>@(_contacts.Any() ? "مخاطبی با این مشخصات یافت نشد" : "هنوز مخاطبی ذخیره نشده — اولین مخاطب را اضافه کنید")</span>
+                </div>
+            }
+            else
+            {
+                <MudTable T="HubSpotContact" Items="_paged" Dense="true" Hover="true" Striped="true"
+                          Breakpoint="Breakpoint.Sm" OnRowClick="@(e => Nav.NavigateTo($"/contact-profile/{e.Item.HsObjectId}"))">
+                    <HeaderContent>
+                        <MudTh>مخاطب</MudTh>
+                        <MudTh>کد ملی</MudTh>
+                        <MudTh>موبایل</MudTh>
+                        <MudTh>ایمیل</MudTh>
+                        <MudTh>شرکت</MudTh>
+                        <MudTh>تاریخ تولد</MudTh>
+                        <MudTh>تاریخ ثبت</MudTh>
+                        <MudTh></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd style="cursor:pointer;">
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <MudAvatar Size="Size.Small"
+                                           Style="background:#FF7A59;color:#fff;font-size:0.75rem;">
+                                    @((context.FirstName ?? context.HsObjectId ?? "?")
+                                        .Substring(0, 1).ToUpper())
+                                </MudAvatar>
+                                <div>
+                                    <div style="font-weight:600;">
+                                        @($"{context.FirstName} {context.LastName}".Trim())
+                                    </div>
+                                    @if (!string.IsNullOrWhiteSpace(context.FatherName))
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                            فرزند: @context.FatherName
+                                        </MudText>
+                                    }
+                                </div>
+                            </div>
+                        </MudTd>
+                        <MudTd>@(context.NCode ?? "—")</MudTd>
+                        <MudTd dir="ltr" style="text-align:right !important;">@(context.MobilePhone ?? context.Phone ?? "—")</MudTd>
+                        <MudTd dir="ltr" style="text-align:right !important;">@(context.Email ?? "—")</MudTd>
+                        <MudTd>@(context.Company ?? "—")</MudTd>
+                        <MudTd>@(context.BirthDate ?? "—")</MudTd>
+                        <MudTd>
+                            <MudText Typo="Typo.caption">
+                                @AppState.FormatDate(context.CreatedAt)
+                            </MudText>
+                        </MudTd>
+                        <MudTd>
+                            <MudTooltip Text="مشاهده پروفایل">
+                                <MudIconButton Icon="@Icons.Material.Filled.OpenInNew"
+                                               Size="Size.Small" Color="Color.Primary"
+                                               OnClick="@(() => Nav.NavigateTo($"/contact-profile/{context.HsObjectId}"))" />
+                            </MudTooltip>
+                            @if (_apiConfigured)
+                            {
+                                <MudTooltip Text="حذف">
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                   Size="Size.Small" Color="Color.Error"
+                                                   OnClick="@(() => DeleteContact(context))" />
+                                </MudTooltip>
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </MudCardContent>
+
+        @if (_totalPages > 1)
+        {
+            <MudCardActions Class="justify-center pa-3">
+                <MudPagination Count="@_totalPages" Selected="@_page"
+                               Color="Color.Primary"
+                               SelectedChanged="@(v => { _page = v; StateHasChanged(); })" />
+            </MudCardActions>
+        }
+    </MudCard>
+</div>
+
+@code {
+    private List<HubSpotContact> _contacts = new();
+    private bool _loading = true;
+    private bool _syncing;
+    private string _search = "";
+
+    // Pagination
+    private int _page     = 1;
+    private const int PageSize = 30;
+
+    private string _apiKey => AppState.HubSpotApiKey;
+    private bool   _apiConfigured => !string.IsNullOrWhiteSpace(_apiKey);
+
+    private IEnumerable<HubSpotContact> _filtered =>
+        string.IsNullOrWhiteSpace(_search)
+            ? _contacts
+            : _contacts.Where(c =>
+                (c.FirstName?.Contains(_search, StringComparison.OrdinalIgnoreCase)    ?? false) ||
+                (c.LastName?.Contains(_search, StringComparison.OrdinalIgnoreCase)     ?? false) ||
+                (c.Email?.Contains(_search, StringComparison.OrdinalIgnoreCase)        ?? false) ||
+                (c.NCode?.Contains(_search, StringComparison.OrdinalIgnoreCase)        ?? false) ||
+                (c.MobilePhone?.Contains(_search, StringComparison.OrdinalIgnoreCase)  ?? false) ||
+                (c.Phone?.Contains(_search, StringComparison.OrdinalIgnoreCase)        ?? false) ||
+                (c.Company?.Contains(_search, StringComparison.OrdinalIgnoreCase)      ?? false) ||
+                c.HsObjectId.Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+    private IEnumerable<HubSpotContact> _paged =>
+        _filtered.Skip((_page - 1) * PageSize).Take(PageSize);
+
+    private int _totalPages =>
+        (int)Math.Ceiling(_filtered.Count() / (double)PageSize);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrWhiteSpace(AppState.HubSpotApiKey))
+            AppState.HubSpotApiKey = await HubSpotService.GetApiKeyAsync() ?? "";
+
+        // Show local data immediately, then sync from HubSpot in background
+        await LoadLocalContacts();
+
+        if (_apiConfigured)
+            await SyncFromHubSpotAsync();
+    }
+
+    private async Task LoadContacts()
+    {
+        await LoadLocalContacts();
+        if (_apiConfigured)
+            await SyncFromHubSpotAsync();
+    }
+
+    private async Task LoadLocalContacts()
+    {
+        _loading = true;
+        _contacts = await Db.HubSpotContacts
+            .AsNoTracking()
+            .Where(c => !c.IsDeleted)
+            .OrderByDescending(c => c.CreatedAt)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    /// <summary>
+    /// Fetches all contacts from HubSpot API and upserts them into local DB,
+    /// then reloads the local list so the UI shows fresh data.
+    /// </summary>
+    private async Task SyncFromHubSpotAsync()
+    {
+        _syncing = true;
+        StateHasChanged();
+        try
+        {
+            var liveContacts = await HubSpotService.GetContactsAsync(_apiKey, limit: 500);
+            foreach (var c in liveContacts)
+                await HubSpotService.SaveContactLocallyAsync(c);
+
+            // Reload local list
+            _contacts = await Db.HubSpotContacts
+                .AsNoTracking()
+                .Where(x => !x.IsDeleted)
+                .OrderByDescending(x => x.CreatedAt)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"هشدار: همگام‌سازی هاب‌اسپات ناموفق بود — {ex.Message}", Severity.Warning);
+        }
+        finally { _syncing = false; StateHasChanged(); }
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        if (!_apiConfigured) return;
+        var parameters = new DialogParameters { ["ApiKey"] = _apiKey };
+        var dialog = await DialogService.ShowAsync<ContactCreateDialog>(
+            "افزودن مخاطب جدید", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            Snackbar.Add("مخاطب با موفقیت ایجاد شد ✓", Severity.Success);
+            await LoadContacts();
+        }
+    }
+
+    private async Task DeleteContact(HubSpotContact contact)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "حذف مخاطب",
+            $"آیا مخاطب «{contact.FirstName} {contact.LastName}» حذف شود؟ این عملیات از هاب‌اسپات نیز حذف می‌کند.",
+            yesText: "بله، حذف شود", cancelText: "خیر");
+        if (confirm != true) return;
+
+        try
+        {
+            if (_apiConfigured)
+                await HubSpotService.DeleteContactAsync(_apiKey, contact.HsObjectId);
+
+            // Soft-delete locally
+            var local = await Db.HubSpotContacts.FindAsync(contact.Id);
+            if (local != null)
+            {
+                local.IsDeleted = true;
+                local.DeletedAt = DateTime.UtcNow;
+                await Db.SaveChangesAsync();
+            }
+
+            Snackbar.Add("مخاطب حذف شد", Severity.Info);
+            await LoadContacts();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در حذف: {ex.Message}", Severity.Error);
+        }
+    }
+}

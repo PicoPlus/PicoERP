@@ -1,0 +1,167 @@
+@inject ISalaryService SalaryService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6"><MudIcon Icon="@Icons.Material.Filled.Payments" Class="ml-2" />ثبت فیش حقوقی</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2" dir="rtl">
+            <MudItem xs="12">
+                <MudSelect Value="_dto.EmployeeId" Label="کارمند *" Variant="Variant.Outlined" Required="true" T="int"
+                           ValueChanged="@((int v) => OnEmployeeChanged(v))">
+                    @foreach (var emp in Employees) { <MudSelectItem Value="@emp.Id">@emp.FullName — @emp.Position</MudSelectItem> }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="6">
+                <MudDatePicker Date="_fromDate" Label="از تاریخ" Variant="Variant.Outlined"
+                               DateFormat="yyyy/MM/dd"
+                               DateChanged="@(d => OnPeriodChanged(d, _toDate))" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudDatePicker Date="_toDate" Label="تا تاریخ" Variant="Variant.Outlined"
+                               DateFormat="yyyy/MM/dd"
+                               DateChanged="@(d => OnPeriodChanged(_fromDate, d))" />
+            </MudItem>
+
+            @if (_selectedEmployee?.SalaryType == SalaryType.PercentageOfRevenue)
+            {
+                <!-- Percentage-based employee info banner -->
+                <MudItem xs="12">
+                    <MudPaper Elevation="0" Class="pa-3" Style="background:#EDE7F6; border-radius:8px; border:1px solid #CE93D8;">
+                        <MudText Typo="Typo.body2" Style="color:#6A1B9A; font-weight:700;">
+                            <MudIcon Icon="@Icons.Material.Filled.Percent" Size="Size.Small" Class="ml-1" />
+                            این کارمند درصد از درآمد دریافت می‌کند — @_selectedEmployee.SalaryPercentage٪ از درآمد دوره
+                        </MudText>
+                        @if (_loadingRevenue)
+                        {
+                            <MudProgressLinear Indeterminate="true" Color="Color.Secondary" Class="mt-2" />
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.caption" Class="mt-1" Style="color:#6A1B9A;">
+                                درآمد دوره: @_periodRevenue.ToString("N0") ریال
+                                &nbsp;→&nbsp;
+                                حقوق محاسبه‌شده: <strong>@_computedBaseSalary.ToString("N0") ریال</strong>
+                            </MudText>
+                        }
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="_dto.BaseSalary" Label="حقوق پایه (ریال) — قابل ویرایش"
+                                     Variant="Variant.Outlined" Min="0"
+                                     HelperText="مقدار پیش‌فرض از درآمد دوره محاسبه شده؛ در صورت نیاز تغییر دهید." />
+                </MudItem>
+            }
+            else
+            {
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="_dto.BaseSalary" Label="حقوق پایه (ریال) *" Variant="Variant.Outlined" Min="0" />
+                </MudItem>
+            }
+
+            <MudItem xs="12" sm="6">
+                <MudNumericField @bind-Value="_dto.Overtime" Label="اضافه کاری (ریال)" Variant="Variant.Outlined" Min="0" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField @bind-Value="_dto.Bonus" Label="پاداش (ریال)" Variant="Variant.Outlined" Min="0" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField @bind-Value="_dto.Fine" Label="جریمه / کسر (ریال)" Variant="Variant.Outlined" Min="0" />
+            </MudItem>
+
+            <!-- Net Salary Preview -->
+            <MudItem xs="12">
+                <MudPaper Elevation="0" Class="pa-3" Style="background:#E8F5E9; border-radius:8px; border:1px solid #C8E6C9;">
+                    <MudText Typo="Typo.body1" Style="font-weight:700; color:#2E7D32;">
+                        خالص حقوق دریافتی: @CalculateNet().ToString("N0") ریال
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_dto.Notes" Label="توضیحات" Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Outlined">انصراف</MudButton>
+        <MudButton OnClick="Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@_loading">
+            @if (_loading) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="ml-1" /> }
+            ذخیره
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public SalaryPaymentDto? Item { get; set; }
+    [Parameter] public List<EmployeeDto> Employees { get; set; } = new();
+    [Parameter] public List<FinancialAccountDto> Accounts { get; set; } = new();
+    [Parameter] public string Username { get; set; } = "system";
+
+    private CreateSalaryPaymentDto _dto = new();
+    private DateTime? _fromDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateTime? _toDate   = DateTime.Today;
+    private bool _loading;
+
+    private EmployeeDto? _selectedEmployee;
+    private decimal _periodRevenue;
+    private decimal _computedBaseSalary;
+    private bool _loadingRevenue;
+
+    private decimal CalculateNet() => _dto.BaseSalary + _dto.Overtime + _dto.Bonus - _dto.Fine;
+
+    private async void OnEmployeeChanged(int employeeId)
+    {
+        _dto.EmployeeId = employeeId;
+        _selectedEmployee = Employees.FirstOrDefault(e => e.Id == employeeId);
+        await RefreshRevenuePreviewAsync();
+    }
+
+    private async void OnPeriodChanged(DateTime? from, DateTime? to)
+    {
+        _fromDate = from;
+        _toDate   = to;
+        await RefreshRevenuePreviewAsync();
+    }
+
+    private async Task RefreshRevenuePreviewAsync()
+    {
+        if (_selectedEmployee?.SalaryType != SalaryType.PercentageOfRevenue) return;
+        if (_fromDate == null || _toDate == null) return;
+
+        _loadingRevenue = true;
+        StateHasChanged();
+
+        _periodRevenue      = await SalaryService.GetPeriodRevenueAsync(_fromDate.Value, _toDate.Value);
+        _computedBaseSalary = Math.Round(_periodRevenue * _selectedEmployee.SalaryPercentage / 100m, 0);
+        _dto.BaseSalary     = _computedBaseSalary;
+        _dto.SalaryPercentage = _selectedEmployee.SalaryPercentage;
+
+        _loadingRevenue = false;
+        StateHasChanged();
+    }
+
+    private async Task Submit()
+    {
+        if (_dto.EmployeeId == 0) { Snackbar.Add("لطفاً کارمند را انتخاب کنید", Severity.Warning); return; }
+        if (_selectedEmployee?.SalaryType == SalaryType.Fixed && _dto.BaseSalary <= 0)
+        {
+            Snackbar.Add("لطفاً حقوق پایه را وارد کنید", Severity.Warning); return;
+        }
+        _dto.PeriodFrom = _fromDate ?? DateTime.Today;
+        _dto.PeriodTo   = _toDate   ?? DateTime.Today;
+        _loading = true;
+        try
+        {
+            var result = await SalaryService.CreateAsync(_dto, Username);
+            if (result.IsSuccess) { Snackbar.Add("فیش حقوقی ثبت شد", Severity.Success); MudDialog.Close(DialogResult.Ok(true)); }
+            else Snackbar.Add(result.Error ?? "خطا", Severity.Error);
+        }
+        finally { _loading = false; }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

@@ -1,0 +1,200 @@
+@page "/purchases"
+@inject IFinancialAccountService AccountService
+@inject IEmployeeService EmployeeService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject PicoERP.Infrastructure.Persistence.AppDbContext Db
+@using Microsoft.EntityFrameworkCore
+@using PicoERP.Domain.Entities
+
+<PageTitle>خریدها — پیکو ERP</PageTitle>
+
+<div class="pico-page" dir="rtl">
+    <div class="page-header">
+        <div>
+            <MudText Typo="Typo.h4" Class="page-title">مدیریت خریدها</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">ثبت و پیگیری خریدهای کسب‌وکار</MudText>
+        </div>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.AddShoppingCart"
+                   OnClick="@(() => OpenDialog(null))">ثبت خرید جدید</MudButton>
+    </div>
+
+    <!-- Summary Cards -->
+    <MudGrid Spacing="3" Class="mb-4">
+        <MudItem xs="12" sm="4">
+            <StatCard Title="جمع خریدهای این ماه" Value="@AppState.FormatAmount(_monthTotal)"
+                      Icon="@Icons.Material.Filled.ShoppingCart" Color="#6A1B9A" BgColor="#F3E5F5" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <StatCard Title="تعداد خریدها" Value="@PersianNumberFormatter.ToPersian(_purchases.Count.ToString())"
+                      Icon="@Icons.Material.Filled.Receipt" Color="#1565C0" BgColor="#E3F2FD" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <StatCard Title="آخرین خرید" Value="@(_purchases.Any() ? AppState.FormatDateTime(_purchases.First().Date) : "ندارد")"
+                      Icon="@Icons.Material.Filled.CalendarToday" Color="#2E7D32" BgColor="#E8F5E9" />
+        </MudItem>
+    </MudGrid>
+
+    <!-- Filters -->
+    <MudCard Elevation="1" Class="pico-card mb-4">
+        <MudCardContent>
+            <MudGrid Spacing="2" AlignItems="Center">
+                <MudItem xs="12" md="4">
+                    <MudTextField @bind-Value="_search" Label="جستجو (فروشنده، فاکتور)" Variant="Variant.Outlined"
+                                  Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+                                  Margin="Margin.Dense" Immediate="true" TextChanged="@(_ => Reload())" />
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudDatePicker Date="_fromDate" Label="از تاریخ" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                   DateChanged="@(v => { _fromDate = v; _ = Reload(); })" />
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudDatePicker Date="_toDate" Label="تا تاریخ" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                   DateChanged="@(v => { _toDate = v; _ = Reload(); })" />
+                </MudItem>
+                <MudItem xs="12" md="2">
+                    <MudButton Variant="Variant.Outlined" FullWidth="true" OnClick="ResetFilters">پاک کردن</MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudCardContent>
+    </MudCard>
+
+    <!-- Table -->
+    <MudCard Elevation="2" Class="pico-card">
+        <MudCardContent Class="pa-0">
+            @if (_loading)
+            {
+                @for (int i = 0; i < 5; i++) { <MudSkeleton Height="48px" /> }
+            }
+            else if (_purchases.Any())
+            {
+                <MudTable Items="_purchases" Dense="true" Hover="true" Striped="true" FixedHeader="true" Height="500px">
+                    <HeaderContent>
+                        <MudTh>ردیف</MudTh>
+                        <MudTh>تاریخ</MudTh>
+                        <MudTh>فروشنده</MudTh>
+                        <MudTh>نوع</MudTh>
+                        <MudTh>تعداد</MudTh>
+                        <MudTh>قیمت واحد</MudTh>
+                        <MudTh>تخفیف</MudTh>
+                        <MudTh>جمع</MudTh>
+                        <MudTh>حساب</MudTh>
+                        <MudTh>عملیات</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@(_purchases.IndexOf(context) + 1)</MudTd>
+                        <MudTd dir="ltr">@AppState.FormatDate(context.Date)</MudTd>
+                        <MudTd>@context.VendorName</MudTd>
+                        <MudTd>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">
+                                @GetTypePersian(context.PurchaseType)
+                            </MudChip>
+                        </MudTd>
+                        <MudTd>@PersianNumberFormatter.ToPersian(context.Quantity.ToString())</MudTd>
+                        <MudTd>@AppState.FormatAmount(context.UnitPrice)</MudTd>
+                        <MudTd>@(context.Discount > 0 ? AppState.FormatAmount(context.Discount) : "-")</MudTd>
+                        <MudTd><strong class="amount-negative">@AppState.FormatAmount(context.TotalAmount)</strong></MudTd>
+                        <MudTd>@(context.FinancialAccount?.Name ?? "-")</MudTd>
+                        <MudTd>
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                                           OnClick="@(() => OpenDialog(context))" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                           OnClick="@(() => DeletePurchase(context))" />
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+            else
+            {
+                <div class="empty-state">
+                    <MudIcon Icon="@Icons.Material.Filled.ShoppingCartCheckout" Style="font-size:64px; color:#CE93D8;" />
+                    <h3>هیچ خریدی ثبت نشده</h3>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => OpenDialog(null))">ثبت اولین خرید</MudButton>
+                </div>
+            }
+        </MudCardContent>
+    </MudCard>
+</div>
+
+@code {
+    private List<Purchase> _purchases = new();
+    private List<FinancialAccountDto> _accounts = new();
+    private List<EmployeeDto> _employees = new();
+    private string? _search;
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
+    private decimal _monthTotal;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _accounts = await AccountService.GetAllAsync();
+        _employees = await EmployeeService.GetAllActiveAsync();
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        _loading = true;
+        StateHasChanged();
+        var query = Db.Purchases.AsNoTracking()
+            .Include(p => p.FinancialAccount)
+            .Include(p => p.Employee)
+            .Where(p => !p.IsDeleted)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(_search))
+            query = query.Where(p => p.VendorName.Contains(_search) || (p.InvoiceNumber != null && p.InvoiceNumber.Contains(_search)));
+        if (_fromDate.HasValue) query = query.Where(p => p.Date >= _fromDate.Value);
+        if (_toDate.HasValue) query = query.Where(p => p.Date <= _toDate.Value);
+
+        _purchases = await query.OrderByDescending(p => p.Date).ToListAsync();
+
+        var now = DateTime.Now;
+        int py = PicoERP.Domain.Common.PersianCalendar.GetPersianYear(now);
+        int pm = PicoERP.Domain.Common.PersianCalendar.GetPersianMonth(now);
+        var ms = PicoERP.Domain.Common.PersianCalendar.GetPersianMonthStart(py, pm);
+        var me = PicoERP.Domain.Common.PersianCalendar.GetPersianMonthEnd(py, pm);
+        _monthTotal = await Db.Purchases.Where(p => !p.IsDeleted && p.Date >= ms && p.Date <= me).SumAsync(p => (decimal?)p.TotalAmount) ?? 0;
+        _loading = false;
+    }
+
+    private void ResetFilters() { _search = null; _fromDate = null; _toDate = null; _ = Reload(); }
+
+    private async Task OpenDialog(Purchase? item)
+    {
+        var parameters = new DialogParameters
+        {
+            ["Purchase"] = item,
+            ["Accounts"] = _accounts,
+            ["Employees"] = _employees,
+            ["Username"] = AppState.CurrentUser?.DisplayName ?? "system"
+        };
+        var dialog = await DialogService.ShowAsync<PurchaseDialog>(
+            item == null ? "ثبت خرید جدید" : "ویرایش خرید",
+            parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (!result.Canceled) await Reload();
+    }
+
+    private async Task DeletePurchase(Purchase item)
+    {
+        var confirm = await DialogService.ShowMessageBox("حذف خرید", "حذف شود؟", yesText: "بله", cancelText: "خیر");
+        if (confirm == true)
+        {
+            item.IsDeleted = true; item.DeletedAt = DateTime.UtcNow;
+            await Db.SaveChangesAsync();
+            Snackbar.Add("حذف شد", Severity.Success);
+            await Reload();
+        }
+    }
+
+    private static string GetTypePersian(ExpenseGroup g) => g switch
+    {
+        ExpenseGroup.Business => "کاری",
+        ExpenseGroup.Personal => "شخصی",
+        ExpenseGroup.Employee => "کارمند",
+        _ => ""
+    };
+}

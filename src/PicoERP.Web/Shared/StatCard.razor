@@ -1,0 +1,57 @@
+@* Premium animated KPI stat card *@
+<div class="pico-stat-card @(Clickable ? "clickable" : "")" style="border-top:3px solid @Color;" @onclick="OnClick">
+    <div class="stat-card-body">
+        <div class="stat-icon-box" style="background:@BgColor; color:@Color;">
+            <MudIcon Icon="@Icon" Style="font-size:26px;" />
+        </div>
+        <div class="stat-text">
+            <div class="stat-label">@Title</div>
+            <div class="stat-amount" style="color:@Color;">@Value</div>
+            @if (!string.IsNullOrEmpty(SubValue))
+            {
+                <div class="stat-sub">@SubValue</div>
+            }
+        </div>
+        @if (!string.IsNullOrEmpty(TrendIcon))
+        {
+            <div class="stat-trend @TrendClass">
+                <MudIcon Icon="@TrendIcon" Style="font-size:18px;" />
+            </div>
+        }
+    </div>
+    @if (ShowProgress && MaxValue > 0)
+    {
+        <div class="stat-progress-wrap">
+            <div class="stat-progress-bar" style="width:@(Math.Min(100, (double)ProgressValue / (double)MaxValue * 100).ToString("F0"))%; background:@Color;"></div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public string? SubValue { get; set; }
+    [Parameter] public string Icon { get; set; } = Icons.Material.Filled.Circle;
+    [Parameter] public string Color { get; set; } = "#1565C0";
+    [Parameter] public string BgColor { get; set; } = "#E3F2FD";
+    [Parameter] public string? Trend { get; set; }
+    [Parameter] public bool Clickable { get; set; }
+    [Parameter] public EventCallback OnClick { get; set; }
+    [Parameter] public bool ShowProgress { get; set; }
+    [Parameter] public decimal ProgressValue { get; set; }
+    [Parameter] public decimal MaxValue { get; set; }
+
+    private string TrendIcon => Trend switch
+    {
+        "up" => Icons.Material.Filled.TrendingUp,
+        "down" => Icons.Material.Filled.TrendingDown,
+        "neutral" => Icons.Material.Filled.TrendingFlat,
+        _ => ""
+    };
+    private string TrendClass => Trend switch
+    {
+        "up" => "trend-up",
+        "down" => "trend-down",
+        _ => ""
+    };
+}

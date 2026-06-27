@@ -1,0 +1,84 @@
+@inject IEmployeeService EmployeeService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent><MudText Typo="Typo.h6">@(Record.Id > 0 ? "ویرایش حضور" : "ثبت حضور")</MudText></TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2" dir="rtl">
+            <MudItem xs="12">
+                <MudSelect @bind-Value="_record.EmployeeId" Label="کارمند *" Variant="Variant.Outlined" Required="true">
+                    @foreach (var emp in Employees) { <MudSelectItem Value="@emp.Id">@emp.FullName</MudSelectItem> }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker @bind-Date="_date" Label="تاریخ *" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect @bind-Value="_record.Type" Label="نوع *" Variant="Variant.Outlined">
+                    <MudSelectItem Value="@AttendanceType.Present">حاضر</MudSelectItem>
+                    <MudSelectItem Value="@AttendanceType.Absent">غایب</MudSelectItem>
+                    <MudSelectItem Value="@AttendanceType.Leave">مرخصی</MudSelectItem>
+                    <MudSelectItem Value="@AttendanceType.Late">تاخیر</MudSelectItem>
+                    <MudSelectItem Value="@AttendanceType.Overtime">اضافه‌کاری</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTimePicker @bind-Time="_checkIn" Label="ساعت ورود" Variant="Variant.Outlined" AmPm="false" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTimePicker @bind-Time="_checkOut" Label="ساعت خروج" Variant="Variant.Outlined" AmPm="false" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField @bind-Value="_record.OvertimeHours" Label="اضافه‌کاری (ساعت)" Variant="Variant.Outlined" Min="0" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_record.Notes" Label="توضیحات" Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Outlined">انصراف</MudButton>
+        <MudButton OnClick="Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@_loading">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public AttendanceDto Record { get; set; } = new();
+    [Parameter] public List<EmployeeDto> Employees { get; set; } = new();
+
+    private AttendanceDto _record = new();
+    private DateTime? _date = DateTime.Today;
+    private TimeSpan? _checkIn;
+    private TimeSpan? _checkOut;
+    private bool _loading;
+
+    protected override void OnInitialized()
+    {
+        _record = new AttendanceDto
+        {
+            Id = Record.Id, EmployeeId = Record.EmployeeId, Date = Record.Date,
+            Type = Record.Type, OvertimeHours = Record.OvertimeHours, Notes = Record.Notes,
+            CheckIn = Record.CheckIn, CheckOut = Record.CheckOut
+        };
+        _date = Record.Date;
+        _checkIn = Record.CheckIn;
+        _checkOut = Record.CheckOut;
+    }
+
+    private async Task Submit()
+    {
+        _record.Date = _date ?? DateTime.Today;
+        _record.CheckIn = _checkIn;
+        _record.CheckOut = _checkOut;
+        _loading = true;
+        try
+        {
+            var result = await EmployeeService.RecordAttendanceAsync(_record);
+            if (result.IsSuccess) { Snackbar.Add("ثبت شد", Severity.Success); MudDialog.Close(DialogResult.Ok(true)); }
+            else Snackbar.Add(result.Error ?? "خطا", Severity.Error);
+        }
+        finally { _loading = false; }
+    }
+    private void Cancel() => MudDialog.Cancel();
+}

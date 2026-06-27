@@ -1,0 +1,178 @@
+@page "/accounts"
+@inject IFinancialAccountService AccountService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>حساب‌های مالی — پیکو ERP</PageTitle>
+
+<div class="pico-page" dir="rtl">
+    <div class="page-header">
+        <div>
+            <MudText Typo="Typo.h4" Class="page-title">حساب‌های مالی</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">مدیریت صندوق، بانک و کارتخوان‌ها</MudText>
+        </div>
+        <div class="header-actions">
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.SwapHoriz"
+                       OnClick="@(() => OpenTransferDialog())" Class="ml-2">انتقال وجه</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="@(() => OpenDialog(null))">حساب جدید</MudButton>
+        </div>
+    </div>
+
+    <!-- Account Cards -->
+    @if (_loading)
+    {
+        <MudGrid Spacing="3">
+            @for (int i = 0; i < 3; i++)
+            {
+                <MudItem xs="12" sm="6" md="4">
+                    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="200px" Class="rounded-card" />
+                </MudItem>
+            }
+        </MudGrid>
+    }
+    else if (_accounts.Any())
+    {
+        <MudGrid Spacing="3">
+            @foreach (var acc in _accounts)
+            {
+                <MudItem xs="12" sm="6" md="4">
+                    <MudCard Elevation="3" Class="pico-card account-card hover-card"
+                             Style="@GetCardAccentStyle(acc.Type)">
+                        <MudCardContent Class="pa-4">
+                            <div class="account-header">
+                                <div class="account-icon" Style="background:@GetAccountBg(acc.Type); color:@GetAccountColor(acc.Type);">
+                                    <MudIcon Icon="@GetAccountIcon(acc.Type)" Style="font-size:28px;" />
+                                </div>
+                                <div>
+                                    <MudText Typo="Typo.h6">@acc.Name</MudText>
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@GetAccountMudColor(acc.Type)">
+                                        @GetAccountTypePersian(acc.Type)
+                                    </MudChip>
+                                </div>
+                            </div>
+                            @if (!string.IsNullOrEmpty(acc.BankName))
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">بانک: @acc.BankName</MudText>
+                            }
+                            <MudDivider Class="my-3" />
+                            <div class="balance-section">
+                                <div>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">موجودی فعلی</MudText>
+                                    <MudText Typo="Typo.h5" Style="@($"color:{GetAccountColor(acc.Type)}; font-weight:800;")">
+                                        @AppState.FormatAmount(acc.CurrentBalance)
+                                    </MudText>
+                                </div>
+                                <div>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">موجودی اولیه</MudText>
+                                    <MudText Typo="Typo.body2">@AppState.FormatAmount(acc.OpeningBalance)</MudText>
+                                </div>
+                            </div>
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary"
+                                       OnClick="@(() => OpenDialog(acc))">ویرایش</MudButton>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Secondary"
+                                       OnClick="@(() => ShowStatement(acc))">صورت حساب</MudButton>
+                            <MudSpacer />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                           OnClick="@(() => DeleteAccount(acc))" />
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+
+        <!-- Total Balance Summary -->
+        <MudCard Elevation="2" Class="pico-card mt-4">
+            <MudCardContent>
+                <MudGrid>
+                    <MudItem xs="12" sm="4">
+                        <div class="balance-summary">
+                            <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Color="Color.Success" />
+                            <span>جمع صندوق:</span>
+                            <strong class="amount-positive">@AppState.FormatAmount(_accounts.Where(a => a.Type == AccountType.Cash).Sum(a => a.CurrentBalance))</strong>
+                        </div>
+                    </MudItem>
+                    <MudItem xs="12" sm="4">
+                        <div class="balance-summary">
+                            <MudIcon Icon="@Icons.Material.Filled.AccountBalanceWallet" Color="Color.Primary" />
+                            <span>جمع بانک:</span>
+                            <strong class="amount-positive">@AppState.FormatAmount(_accounts.Where(a => a.Type == AccountType.Bank).Sum(a => a.CurrentBalance))</strong>
+                        </div>
+                    </MudItem>
+                    <MudItem xs="12" sm="4">
+                        <div class="balance-summary">
+                            <MudIcon Icon="@Icons.Material.Filled.CreditCard" Color="Color.Secondary" />
+                            <span>جمع کارتخوان:</span>
+                            <strong class="amount-positive">@AppState.FormatAmount(_accounts.Where(a => a.Type == AccountType.CardReader).Sum(a => a.CurrentBalance))</strong>
+                        </div>
+                    </MudItem>
+                </MudGrid>
+            </MudCardContent>
+        </MudCard>
+    }
+    else
+    {
+        <div class="empty-state">
+            <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Style="font-size:72px;" />
+            <h3>هیچ حسابی تعریف نشده</h3>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => OpenDialog(null))">افزودن اولین حساب</MudButton>
+        </div>
+    }
+</div>
+
+@code {
+    private List<FinancialAccountDto> _accounts = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        _loading = true;
+        StateHasChanged();
+        _accounts = await AccountService.GetAllAsync();
+        _loading = false;
+    }
+
+    private async Task OpenDialog(FinancialAccountDto? acc)
+    {
+        var parameters = new DialogParameters { ["Account"] = acc };
+        var dialog = await DialogService.ShowAsync<AccountDialog>(
+            acc == null ? "افزودن حساب مالی" : "ویرایش حساب",
+            parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (!result.Canceled) await Reload();
+    }
+
+    private async Task OpenTransferDialog()
+    {
+        var parameters = new DialogParameters { ["Accounts"] = _accounts, ["Username"] = AppState.CurrentUser?.DisplayName ?? "system" };
+        var dialog = await DialogService.ShowAsync<TransferDialog>("انتقال وجه", parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (!result.Canceled) await Reload();
+    }
+
+    private async Task ShowStatement(FinancialAccountDto acc) =>
+        Snackbar.Add($"صورت حساب {acc.Name}", Severity.Info);
+
+    private async Task DeleteAccount(FinancialAccountDto acc)
+    {
+        var confirm = await DialogService.ShowMessageBox("حذف حساب", $"حساب «{acc.Name}» حذف شود؟", yesText: "بله", cancelText: "خیر");
+        if (confirm == true)
+        {
+            var result = await AccountService.DeleteAsync(acc.Id);
+            if (result.IsSuccess) { Snackbar.Add("حساب حذف شد", Severity.Success); await Reload(); }
+            else Snackbar.Add(result.Error ?? "خطا", Severity.Error);
+        }
+    }
+
+    private static string GetAccountColor(AccountType t) => t switch { AccountType.Cash => "#2E7D32", AccountType.Bank => "#1565C0", AccountType.CardReader => "#6A1B9A", _ => "#1565C0" };
+    private static string GetAccountBg(AccountType t) => t switch { AccountType.Cash => "#E8F5E9", AccountType.Bank => "#E3F2FD", AccountType.CardReader => "#F3E5F5", _ => "#E3F2FD" };
+    private static Color GetAccountMudColor(AccountType t) => t switch { AccountType.Cash => Color.Success, AccountType.Bank => Color.Primary, AccountType.CardReader => Color.Secondary, _ => Color.Default };
+    private static string GetAccountIcon(AccountType t) => t switch { AccountType.Cash => Icons.Material.Filled.AccountBalance, AccountType.Bank => Icons.Material.Filled.AccountBalanceWallet, AccountType.CardReader => Icons.Material.Filled.CreditCard, _ => Icons.Material.Filled.Wallet };
+    private static string GetAccountTypePersian(AccountType t) => t switch { AccountType.Cash => "صندوق", AccountType.Bank => "بانک", AccountType.CardReader => "کارتخوان", AccountType.Wallet => "کیف پول", _ => "" };
+    private static string GetCardAccentStyle(AccountType t) => $"border-top: 4px solid {GetAccountColor(t)};";
+}

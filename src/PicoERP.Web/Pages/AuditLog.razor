@@ -1,0 +1,188 @@
+@page "/audit-log"
+@inject PicoERP.Infrastructure.Persistence.AppDbContext Db
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@using Microsoft.EntityFrameworkCore
+@using PicoERP.Domain.Entities
+@using AuditLogEntity = PicoERP.Domain.Entities.AuditLog
+
+
+<PageTitle>گزارش فعالیت — پیکو ERP</PageTitle>
+
+<div class="pico-page" dir="rtl">
+    <div class="page-header">
+        <div>
+            <MudText Typo="Typo.h4" Class="page-title">گزارش فعالیت سیستم</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">ثبت تمام تغییرات و عملیات انجام‌شده در سیستم</MudText>
+        </div>
+        <div class="header-actions">
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Print"
+                       OnClick="@(async () => await JS.InvokeVoidAsync("window.print"))"
+                       Class="no-print">چاپ</MudButton>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <MudCard Elevation="1" Class="pico-card mb-4">
+        <MudCardContent>
+            <MudGrid Spacing="2" AlignItems="Center">
+                <MudItem xs="12" md="3">
+                    <MudTextField @bind-Value="_search" Label="جستجو..." Variant="Variant.Outlined"
+                                  Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+                                  Margin="Margin.Dense" Immediate="true" />
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudDatePicker @bind-Date="_fromDate" Label="از تاریخ" Variant="Variant.Outlined"
+                                   Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudDatePicker @bind-Date="_toDate" Label="تا تاریخ" Variant="Variant.Outlined"
+                                   Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" md="2">
+                    <MudTextField @bind-Value="_entityFilter" Label="نوع موجودیت" Variant="Variant.Outlined"
+                                  Margin="Margin.Dense" Placeholder="مثال: Income" />
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.FilterList"
+                               OnClick="LoadLogs">اعمال فیلتر</MudButton>
+                    <MudButton Variant="Variant.Text" OnClick="ClearFilters" Class="mr-2">پاک‌کردن</MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudCardContent>
+    </MudCard>
+
+    <!-- Audit Table -->
+    <MudCard Elevation="2" Class="pico-card">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h6">رویدادهای اخیر</MudText>
+            </CardHeaderContent>
+            <CardHeaderActions>
+                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">
+                    @_logs.Count رویداد
+                </MudChip>
+            </CardHeaderActions>
+        </MudCardHeader>
+        <MudCardContent Class="pa-0">
+            @if (_loading)
+            {
+                <div class="loading-center"><MudProgressCircular Color="Color.Primary" Indeterminate="true" /></div>
+            }
+            else if (!_logs.Any())
+            {
+                <div class="empty-state-sm">
+                    <MudIcon Icon="@Icons.Material.Filled.History" />
+                    <span>رویدادی ثبت نشده</span>
+                </div>
+            }
+            else
+            {
+                <MudTable Items="_logs" Dense="true" Hover="true" Striped="true" Breakpoint="Breakpoint.Sm">
+                    <HeaderContent>
+                        <MudTh>زمان</MudTh>
+                        <MudTh>کاربر</MudTh>
+                        <MudTh>موجودیت</MudTh>
+                        <MudTh>شناسه</MudTh>
+                        <MudTh>عملیات</MudTh>
+                        <MudTh>IP</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>
+                            <MudText Typo="Typo.caption">
+                                @AppState.FormatDate(context.Timestamp.ToLocalTime())
+                                <span dir="ltr" style="display:inline-block; margin-right:4px;">
+                                    @PicoERP.Domain.Common.PersianNumberFormatter.ToPersian(context.Timestamp.ToLocalTime().ToString("HH:mm"))
+                                </span>
+                            </MudText>
+                        </MudTd>
+                        <MudTd>
+                            <MudText Typo="Typo.body2">@(context.Username ?? "—")</MudText>
+                        </MudTd>
+                        <MudTd>
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary">
+                                @context.EntityName
+                            </MudChip>
+                        </MudTd>
+                        <MudTd>@context.EntityId</MudTd>
+                        <MudTd>
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
+                                     Color="@GetActionColor(context.Action)">
+                                @GetActionPersian(context.Action)
+                            </MudChip>
+                        </MudTd>
+                        <MudTd>
+                            <MudText Typo="Typo.caption" dir="ltr" style="display:inline-block;">
+                                @(context.IpAddress ?? "—")
+                            </MudText>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </MudCardContent>
+    </MudCard>
+</div>
+
+@code {
+    private List<AuditLogEntity> _logs = new();
+    private string _search = "";
+    private string _entityFilter = "";
+    private DateTime? _fromDate = DateTime.Today.AddDays(-7);
+    private DateTime? _toDate = DateTime.Today;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadLogs();
+    }
+
+    private async Task LoadLogs()
+    {
+        _loading = true;
+        var query = Db.AuditLogs.AsNoTracking().AsQueryable();
+
+        if (_fromDate.HasValue)
+            query = query.Where(l => l.Timestamp >= _fromDate.Value);
+        if (_toDate.HasValue)
+            query = query.Where(l => l.Timestamp <= _toDate.Value.AddDays(1).AddTicks(-1));
+        if (!string.IsNullOrWhiteSpace(_entityFilter))
+            query = query.Where(l => l.EntityName.Contains(_entityFilter));
+        if (!string.IsNullOrWhiteSpace(_search))
+            query = query.Where(l => (l.Username != null && l.Username.Contains(_search)) ||
+                                      l.EntityName.Contains(_search) ||
+                                      l.Action.Contains(_search));
+
+        _logs = await query.OrderByDescending(l => l.Timestamp).Take(500).ToListAsync();
+        _loading = false;
+    }
+
+    private void ClearFilters()
+    {
+        _search = ""; _entityFilter = "";
+        _fromDate = DateTime.Today.AddDays(-7);
+        _toDate = DateTime.Today;
+        InvokeAsync(LoadLogs);
+    }
+
+    private static string GetActionPersian(string action) => action switch
+    {
+        "Create" => "ایجاد",
+        "Update" => "ویرایش",
+        "Delete" => "حذف",
+        "Login" => "ورود",
+        "Logout" => "خروج",
+        _ => action
+    };
+
+    private static Color GetActionColor(string action) => action switch
+    {
+        "Create" => Color.Success,
+        "Update" => Color.Warning,
+        "Delete" => Color.Error,
+        "Login" => Color.Primary,
+        "Logout" => Color.Secondary,
+        _ => Color.Default
+    };
+}

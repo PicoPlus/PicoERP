@@ -1,0 +1,864 @@
+@page "/contact-profile/{ContactId}"
+@inject AppStateService AppState
+@inject IHubSpotService HubSpotService
+@inject ISmsService SmsService
+@inject ISmsLogService SmsLogService
+@inject ISettingsService SettingsService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Nav
+@inject PicoERP.Infrastructure.Persistence.AppDbContext Db
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Forms
+@using PicoERP.Domain.Entities
+@using PicoERP.Web.Services
+
+<PageTitle>پروفایل مخاطب — پیکو ERP</PageTitle>
+
+<style>
+    .contact-hero {
+        background: linear-gradient(135deg, #FF7A59 0%, #FF4A00 100%);
+        border-radius: 16px 16px 0 0;
+        padding: 32px 24px 24px;
+        color: #fff;
+        position: relative;
+        overflow: hidden;
+    }
+    .contact-hero::before {
+        content: "";
+        position: absolute;
+        top: -40px; right: -40px;
+        width: 180px; height: 180px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.08);
+    }
+    .contact-hero-avatar {
+        width: 80px; height: 80px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.25);
+        border: 3px solid rgba(255,255,255,0.6);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 2rem; font-weight: 800;
+        margin-bottom: 12px;
+        flex-shrink: 0;
+    }
+    .contact-hero-name { font-size: 1.5rem; font-weight: 800; line-height: 1.2; margin-bottom: 4px; }
+    .contact-hero-sub  { font-size: 0.875rem; opacity: .8; }
+    .contact-pill {
+        display: inline-flex; align-items: center; gap: 4px;
+        background: rgba(255,255,255,0.18);
+        border-radius: 20px; padding: 4px 10px;
+        font-size: 0.78rem; margin: 2px;
+    }
+    .profile-info-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0;
+    }
+    .profile-info-cell {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--mud-palette-divider);
+    }
+    .profile-info-cell:nth-child(odd) { border-left: 1px solid var(--mud-palette-divider); }
+    .profile-info-label { font-size: 0.72rem; color: var(--mud-palette-text-secondary); margin-bottom: 2px; }
+    .profile-info-value { font-weight: 600; font-size: 0.9rem; }
+    .activity-pill {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 0.72rem;
+        font-weight: 600;
+        background: #e8f5e9;
+        color: #2E7D32;
+        margin-left: 6px;
+    }
+    .note-card {
+        border-right: 3px solid #FF7A59;
+        background: var(--mud-palette-surface);
+        border-radius: 6px;
+        padding: 12px 16px;
+        margin-bottom: 10px;
+    }
+    .tab-content-scroll { max-height: 520px; overflow-y: auto; padding: 4px 0; }
+</style>
+
+<div class="pico-page" dir="rtl">
+
+    <!-- Back + header -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
+        <MudIconButton Icon="@Icons.Material.Filled.ArrowForward"
+                       OnClick="@(() => Nav.NavigateTo("/contacts"))"
+                       Variant="Variant.Text" />
+        <div>
+            <MudText Typo="Typo.h4" Class="page-title">
+                @(_contactName ?? "در حال بارگذاری...")
+            </MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary" dir="ltr">
+                HubSpot ID: @ContactId
+            </MudText>
+        </div>
+        @if (_loading)
+        {
+            <MudProgressCircular Indeterminate="true" Color="Color.Primary"
+                                 Size="Size.Small" Style="margin-right:auto;" />
+        }
+    </div>
+
+    @if (_loading && _contact == null && _hubContact == null)
+    {
+        <div class="loading-center" style="height:300px;">
+            <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Large" />
+        </div>
+    }
+    else
+    {
+        <MudGrid Spacing="3">
+
+            <!-- ──────── LEFT: Profile card ──────── -->
+            <MudItem xs="12" md="4">
+                <MudCard Elevation="3" Class="mb-4" Style="border-radius:16px;overflow:hidden;">
+                    <!-- Hero banner -->
+                    <div class="contact-hero">
+                        <div style="display:flex;align-items:flex-start;gap:16px;position:relative;z-index:1;">
+                            <div class="contact-hero-avatar">
+                                @((_contactInitial).ToUpper())
+                            </div>
+                            <div style="flex:1;">
+                                <div class="contact-hero-name">@_contactName</div>
+                                @if (!string.IsNullOrWhiteSpace(_contact?.Company ?? _hubContact?.Company))
+                                {
+                                    <div class="contact-hero-sub">
+                                        <span style="opacity:.7;">@(_contact?.Company ?? _hubContact?.Company)</span>
+                                    </div>
+                                }
+                                <div style="margin-top:8px;">
+                                    @if (!string.IsNullOrWhiteSpace(_contact?.MobilePhone ?? _hubContact?.MobilePhone))
+                                    {
+                                        <span class="contact-pill">
+                                            <span style="font-size:0.7rem;">📱</span>
+                                            @(_contact?.MobilePhone ?? _hubContact?.MobilePhone)
+                                        </span>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(_contact?.Email ?? _hubContact?.Email))
+                                    {
+                                        <span class="contact-pill">
+                                            <span style="font-size:0.7rem;">✉</span>
+                                            @(_contact?.Email ?? _hubContact?.Email)
+                                        </span>
+                                    }
+                                </div>
+                            </div>
+                            @if (_apiConfigured)
+                            {
+                                <MudTooltip Text="آپدیت از هاب‌اسپات">
+                                    <MudIconButton Icon="@Icons.Material.Filled.Sync"
+                                                   Style="color:rgba(255,255,255,0.8);"
+                                                   Size="Size.Small"
+                                                   OnClick="RefreshFromApi" />
+                                </MudTooltip>
+                            }
+                        </div>
+                    </div>
+
+                    <!-- Info grid -->
+                    <div class="profile-info-grid">
+                        @ProfileCell("کد ملی", _contact?.NCode ?? _hubContact?.NCode, Icons.Material.Filled.Badge)
+                        @ProfileCell("تلفن همراه", _contact?.MobilePhone ?? _hubContact?.MobilePhone, Icons.Material.Filled.PhoneAndroid)
+                        @ProfileCell("تلفن ثابت", _contact?.Phone ?? _hubContact?.Phone, Icons.Material.Filled.Phone)
+                        @ProfileCell("ایمیل", _contact?.Email ?? _hubContact?.Email, Icons.Material.Filled.Email)
+                        @ProfileCell("نام پدر", _contact?.FatherName, Icons.Material.Filled.FamilyRestroom)
+                        @ProfileCell("تاریخ تولد", _contact?.BirthDate, Icons.Material.Filled.Cake)
+                        @ProfileCell("شرکت", _contact?.Company ?? _hubContact?.Company, Icons.Material.Filled.Business)
+                        @ProfileCell("تاریخ ایجاد",
+                            _contact?.HsCreatedAt.HasValue == true
+                                ? AppState.FormatDate(_contact!.HsCreatedAt!.Value)
+                                : _hubContact?.CreateDate.HasValue == true
+                                    ? AppState.FormatDate(_hubContact.CreateDate!.Value)
+                                    : null,
+                            Icons.Material.Filled.CalendarMonth)
+                    </div>
+
+                    <!-- Live badge -->
+                    @if (_hubContact != null)
+                    {
+                        <div style="padding:10px 16px;background:#f0fdf4;border-top:1px solid #bbf7d0;display:flex;align-items:center;gap:6px;">
+                            <span style="width:8px;height:8px;background:#22c55e;border-radius:50%;display:inline-block;flex-shrink:0;"></span>
+                            <MudText Typo="Typo.caption" Style="color:#15803d;font-weight:600;">
+                                اطلاعات از هاب‌اسپات بارگذاری شد
+                            </MudText>
+                        </div>
+                    }
+                </MudCard>
+
+                <!-- Quick stats -->
+                <MudCard Elevation="1" Class="pico-card" Style="border-radius:12px;">
+                    <MudCardContent Style="padding:12px 16px;">
+                        <div style="display:flex;justify-content:space-around;text-align:center;">
+                            <div>
+                                <MudText Typo="Typo.h5" Style="font-weight:800;color:#0091AE;">
+                                    @_deals.Count
+                                </MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">دیل</MudText>
+                            </div>
+                            <MudDivider Vertical="true" FlexItem="true" />
+                            <div>
+                                <MudText Typo="Typo.h5" Style="font-weight:800;color:#FF7A59;">
+                                    @_notes.Count
+                                </MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">یادداشت</MudText>
+                            </div>
+                            <MudDivider Vertical="true" FlexItem="true" />
+                            <div>
+                                <MudText Typo="Typo.h5" Style="font-weight:800;color:#7c3aed;">
+                                    @_deals.Where(d => d.Stage == "closedwon").Count()
+                                </MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">برنده</MudText>
+                            </div>
+                        </div>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <!-- ──────── RIGHT: Tabs ──────── -->
+            <MudItem xs="12" md="8">
+                <MudCard Elevation="2" Class="pico-card" Style="border-radius:16px;overflow:hidden;">
+                    <MudTabs Elevation="0" Rounded="false" ApplyEffectsToContainer="false"
+                             PanelClass="pa-0" ActivePanelIndexChanged="OnTabChanged"
+                             Style="border-bottom:1px solid var(--mud-palette-divider);">
+
+                        <!-- ── Tab 1: Deals ── -->
+                        <MudTabPanel Text="دیل‌ها" Icon="@Icons.Material.Filled.Handshake" BadgeData="@_deals.Count" BadgeColor="Color.Primary">
+                            <div class="tab-content-scroll pa-3">
+                                @if (_loadingDeals)
+                                {
+                                    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-3" />
+                                    <MudSkeleton Height="48px" Class="mb-2" />
+                                    <MudSkeleton Height="48px" Class="mb-2" />
+                                    <MudSkeleton Height="48px" />
+                                }
+                                else if (!_deals.Any())
+                                {
+                                    <div class="empty-state-sm">
+                                        <MudIcon Icon="@Icons.Material.Filled.SearchOff" />
+                                        <span>هیچ دیلی با این مخاطب مرتبط نیست</span>
+                                    </div>
+                                }
+                                else
+                                {
+                                    @foreach (var deal in _deals)
+                                    {
+                                        <div style="display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--mud-palette-divider);border-radius:10px;margin-bottom:8px;cursor:pointer;transition:background .15s;"
+                                             @onclick="@(() => Nav.NavigateTo($"/deal/{deal.Id}"))">
+                                            <div style="width:40px;height:40px;border-radius:10px;background:#e0f2fe;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                                <MudIcon Icon="@Icons.Material.Filled.Handshake" Style="color:#0091AE;font-size:1.2rem;" />
+                                            </div>
+                                            <div style="flex:1;min-width:0;">
+                                                <div style="font-weight:700;font-size:0.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                                                    @deal.DealName
+                                                </div>
+                                                <div style="font-size:0.75rem;color:#6b7280;">
+                                                    @(deal.CloseDate.HasValue ? AppState.FormatDate(deal.CloseDate.Value) : "")
+                                                </div>
+                                            </div>
+                                            <div style="text-align:left;">
+                                                <div style="font-weight:700;font-size:0.875rem;color:#2E7D32;">
+                                                    @AppState.FormatAmount(deal.Amount)
+                                                </div>
+                                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
+                                                         Color="@GetStageColor(deal.Stage)" Style="height:20px;font-size:0.68rem;">
+                                                    @GetStageLabel(deal.Stage)
+                                                </MudChip>
+                                            </div>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </MudTabPanel>
+
+                        <!-- ── Tab 2: Notes ── -->
+                        <MudTabPanel Text="یادداشت‌ها" Icon="@Icons.Material.Filled.Note" BadgeData="@_notes.Count" BadgeColor="Color.Warning">
+                            <div class="tab-content-scroll pa-3">
+
+                                <!-- Add note inline -->
+                                @if (_apiConfigured)
+                                {
+                                    @if (!_showAddNote)
+                                    {
+                                        <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                                                   StartIcon="@Icons.Material.Filled.Add"
+                                                   Class="mb-3" FullWidth="true"
+                                                   OnClick="@(() => _showAddNote = true)">
+                                            افزودن یادداشت جدید
+                                        </MudButton>
+                                    }
+                                    else
+                                    {
+                                        <MudPaper Elevation="0" Class="mb-3"
+                                                  Style="border:1px solid #FF7A59;border-radius:8px;padding:16px;">
+                                            <MudTextField @bind-Value="_newNote"
+                                                          Label="متن یادداشت"
+                                                          Variant="Variant.Outlined"
+                                                          Lines="3" AutoGrow="true"
+                                                          Placeholder="یادداشت خود را وارد کنید..." />
+                                            <div style="display:flex;gap:8px;margin-top:8px;justify-content:flex-end;">
+                                                <MudButton Size="Size.Small" Variant="Variant.Text"
+                                                           OnClick="@(() => { _showAddNote = false; _newNote = ""; })">
+                                                    انصراف
+                                                </MudButton>
+                                                <MudButton Size="Size.Small" Variant="Variant.Filled"
+                                                           Color="Color.Primary"
+                                                           StartIcon="@Icons.Material.Filled.Save"
+                                                           OnClick="AddNote"
+                                                           Disabled="@(_savingNote || string.IsNullOrWhiteSpace(_newNote))">
+                                                    @(_savingNote ? "ذخیره..." : "ذخیره یادداشت")
+                                                </MudButton>
+                                            </div>
+                                        </MudPaper>
+                                    }
+                                }
+
+                                @if (_loadingNotes)
+                                {
+                                    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+                                }
+                                else if (!_notes.Any())
+                                {
+                                    <div class="empty-state-sm">
+                                        <MudIcon Icon="@Icons.Material.Filled.NoteAdd" />
+                                        <span>هنوز یادداشتی ثبت نشده</span>
+                                    </div>
+                                }
+                                else
+                                {
+                                    @foreach (var note in _notes)
+                                    {
+                                        <div class="note-card">
+                                            <MudText Typo="Typo.body2" Style="white-space:pre-wrap;">@note.Body</MudText>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                                                @(note.CreatedAt.HasValue ? AppState.FormatDateTime(note.CreatedAt.Value) : "")
+                                            </MudText>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </MudTabPanel>
+
+                        <!-- ── Tab 3: Activity / Calls ── -->
+                        <MudTabPanel Text="تماس‌ها" Icon="@Icons.Material.Filled.Call"
+                                     BadgeData="@(_calls.Count > 0 ? _calls.Count.ToString() : null)" BadgeColor="Color.Info">
+                            <div class="tab-content-scroll pa-3">
+                                @if (_loadingCalls)
+                                {
+                                    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-3" />
+                                    <MudSkeleton Height="60px" Class="mb-2" />
+                                    <MudSkeleton Height="60px" />
+                                }
+                                else if (!_calls.Any())
+                                {
+                                    <div class="empty-state-sm" style="padding-top:40px;">
+                                        <MudIcon Icon="@Icons.Material.Filled.PhoneCallback" Style="font-size:3rem;color:#d1d5db;" />
+                                        <span style="margin-top:8px;color:#9ca3af;">هیچ تماسی ثبت نشده</span>
+                                        @if (_apiConfigured)
+                                        {
+                                            <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                                                       Class="mt-3"
+                                                       StartIcon="@Icons.Material.Filled.Refresh"
+                                                       OnClick="LoadCallsAsync">
+                                                بارگذاری مجدد
+                                            </MudButton>
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    @foreach (var call in _calls)
+                                    {
+                                        <div style="border-right:3px solid #2563eb;background:var(--mud-palette-surface);border-radius:6px;padding:12px 16px;margin-bottom:10px;">
+                                            <div style="display:flex;align-items:center;gap:10px;">
+                                                <div style="width:36px;height:36px;border-radius:50%;background:#dbeafe;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                                    <MudIcon Icon="@(call.Direction == "INBOUND" ? Icons.Material.Filled.CallReceived : Icons.Material.Filled.CallMade)"
+                                                             Style="color:#2563eb;font-size:1rem;" />
+                                                </div>
+                                                <div style="flex:1;">
+                                                    <div style="font-weight:600;font-size:.875rem;">
+                                                        @(call.Title ?? call.Body ?? "تماس")
+                                                    </div>
+                                                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px;">
+                                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                            @(call.CreatedAt.HasValue ? AppState.FormatDateTime(call.CreatedAt.Value) : "")
+                                                        </MudText>
+                                                        @if (call.DurationSeconds.HasValue)
+                                                        {
+                                                            <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Style="height:18px;font-size:.65rem;" dir="ltr">
+                                                                @($"{call.DurationSeconds / 60}:{call.DurationSeconds % 60:D2}")
+                                                            </MudChip>
+                                                        }
+                                                        @if (!string.IsNullOrWhiteSpace(call.Status))
+                                                        {
+                                                            <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
+                                                                     Color="@(call.Status == "COMPLETED" ? Color.Success : Color.Default)"
+                                                                     Style="height:18px;font-size:.65rem;">
+                                                                @call.Status
+                                                            </MudChip>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </MudTabPanel>
+
+                        <!-- ── Tab 4: SMS ── -->
+                        <MudTabPanel Text="پیامک" Icon="@Icons.Material.Filled.Sms" BadgeData="@(_smsLogs.Count > 0 ? _smsLogs.Count.ToString() : null)" BadgeColor="Color.Info">
+                            <div class="tab-content-scroll pa-3">
+
+                                <!-- Quick send -->
+                                @if (!string.IsNullOrWhiteSpace(_contactPhone))
+                                {
+                                    @if (!_showSendSms)
+                                    {
+                                        <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                                                   StartIcon="@Icons.Material.Filled.Send"
+                                                   Class="mb-3" FullWidth="true"
+                                                   Color="Color.Info"
+                                                   OnClick="@(() => _showSendSms = true)">
+                                            ارسال پیامک جدید به @_contactPhone
+                                        </MudButton>
+                                    }
+                                    else
+                                    {
+                                        <MudPaper Elevation="0" Class="mb-3"
+                                                  Style="border:1px solid #0288d1;border-radius:8px;padding:16px;">
+                                            <MudTextField @bind-Value="_smsText"
+                                                          Label="متن پیامک"
+                                                          Variant="Variant.Outlined"
+                                                          Lines="3" AutoGrow="true"
+                                                          Placeholder="متن پیامک را وارد کنید..."
+                                                          HelperText="@($"{_smsText.Length} کاراکتر")" />
+                                            <div style="display:flex;gap:8px;margin-top:8px;justify-content:flex-end;">
+                                                <MudButton Size="Size.Small" Variant="Variant.Text"
+                                                           OnClick="@(() => { _showSendSms = false; _smsText = ""; })">
+                                                    انصراف
+                                                </MudButton>
+                                                <MudButton Size="Size.Small" Variant="Variant.Filled"
+                                                           Color="Color.Info"
+                                                           StartIcon="@Icons.Material.Filled.Send"
+                                                           OnClick="SendSmsToContact"
+                                                           Disabled="@(_sendingSms || string.IsNullOrWhiteSpace(_smsText))">
+                                                    @(_sendingSms ? "در حال ارسال..." : "ارسال پیامک")
+                                                </MudButton>
+                                            </div>
+                                        </MudPaper>
+                                    }
+                                }
+
+                                @if (_loadingSmsLogs)
+                                {
+                                    <MudProgressLinear Indeterminate="true" Color="Color.Info" Class="mb-2" />
+                                }
+                                else if (!_smsLogs.Any())
+                                {
+                                    <div class="empty-state-sm" style="padding-top:24px;">
+                                        <MudIcon Icon="@Icons.Material.Filled.Sms" Style="font-size:3rem;color:#d1d5db;" />
+                                        <span style="margin-top:8px;color:#9ca3af;">
+                                            هنوز پیامکی به این مخاطب ارسال نشده
+                                        </span>
+                                    </div>
+                                }
+                                else
+                                {
+                                    @foreach (var log in _smsLogs)
+                                    {
+                                        <div style="display:flex;align-items:flex-start;gap:12px;padding:12px;border:1px solid var(--mud-palette-divider);border-radius:10px;margin-bottom:8px;">
+                                            <div style="width:36px;height:36px;border-radius:50%;background:#fef3c7;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                                <MudIcon Icon="@Icons.Material.Filled.Message" Style="color:#d97706;font-size:1rem;" />
+                                            </div>
+                                            <div style="flex:1;">
+                                                <div style="font-weight:600;font-size:0.875rem;white-space:pre-wrap;">@log.Message</div>
+                                                <div style="display:flex;gap:8px;margin-top:4px;align-items:center;">
+                                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                        @AppState.FormatDateTime(log.SentAt)
+                                                    </MudText>
+                                                    @if (!string.IsNullOrWhiteSpace(log.SenderNumber))
+                                                    {
+                                                        <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="Color.Default" Style="height:18px;font-size:0.65rem;" dir="ltr">
+                                                            از @log.SenderNumber
+                                                        </MudChip>
+                                                    }
+                                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
+                                                             Color="@(log.Status == "sent" || log.Status == null ? Color.Success : Color.Warning)"
+                                                             Style="height:18px;font-size:0.65rem;">
+                                                        @(log.Status == "sent" || log.Status == null ? "ارسال شد" : log.Status)
+                                                    </MudChip>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </MudTabPanel>
+
+                        <!-- ── Tab 5: Files ── -->
+                        <MudTabPanel Text="فایل‌ها" Icon="@Icons.Material.Filled.AttachFile"
+                                     BadgeData="@(_contactFiles.Count > 0 ? _contactFiles.Count.ToString() : null)" BadgeColor="Color.Secondary">
+                            <div class="tab-content-scroll pa-3">
+                                @if (_apiConfigured)
+                                {
+                                    <div style="margin-bottom:12px;">
+                                        <InputFile id="contact-file-upload" OnChange="OnContactFileSelected" hidden />
+                                        <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                                                   StartIcon="@Icons.Material.Filled.Upload"
+                                                   Color="Color.Primary" FullWidth="true"
+                                                   Disabled="@_uploadingContactFile"
+                                                   OnClick="@(() => { })">
+                                            <label for="contact-file-upload" style="cursor:pointer;width:100%;display:flex;align-items:center;justify-content:center;gap:6px;">
+                                                @(_uploadingContactFile ? "در حال آپلود..." : "آپلود فایل جدید")
+                                            </label>
+                                        </MudButton>
+                                    </div>
+                                }
+                                @if (_loadingContactFiles)
+                                {
+                                    <MudProgressLinear Indeterminate="true" Color="Color.Secondary" Class="mb-3" />
+                                }
+                                else if (!_contactFiles.Any())
+                                {
+                                    <div class="empty-state-sm" style="padding-top:32px;">
+                                        <MudIcon Icon="@Icons.Material.Filled.FolderOpen" Style="font-size:3rem;color:#d1d5db;" />
+                                        <span style="margin-top:8px;color:#9ca3af;">هنوز فایلی پیوست نشده</span>
+                                    </div>
+                                }
+                                else
+                                {
+                                    @foreach (var file in _contactFiles)
+                                    {
+                                        <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--mud-palette-divider);border-radius:8px;margin-bottom:8px;">
+                                            <MudIcon Icon="@Icons.Material.Filled.InsertDriveFile"
+                                                     Style="color:#6b7280;font-size:1.5rem;flex-shrink:0;" />
+                                            <div style="flex:1;min-width:0;">
+                                                <div style="font-weight:600;font-size:.875rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                                                    @file.Name
+                                                </div>
+                                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                    @(file.CreatedAt.HasValue ? AppState.FormatDate(file.CreatedAt.Value) : "")
+                                                    @if (file.Size.HasValue)
+                                                    {<span> · @FormatFileSize(file.Size.Value)</span>}
+                                                </MudText>
+                                            </div>
+                                            @if (!string.IsNullOrWhiteSpace(file.Url))
+                                            {
+                                                <MudIconButton Icon="@Icons.Material.Filled.Download"
+                                                               Size="Size.Small" Color="Color.Primary"
+                                                               OnClick="@(() => Nav.NavigateTo(file.Url!, forceLoad: true))" />
+                                            }
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </MudTabPanel>
+
+                    </MudTabs>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+    }
+</div>
+
+@code {
+    [Parameter] public string ContactId { get; set; } = string.Empty;
+
+    private HubSpotContact? _contact;
+    private HubSpotContactDto? _hubContact;
+    private List<HubSpotDealDto> _deals = new();
+    private List<HubSpotDealStageDto> _stages = new();
+    private List<HubSpotNoteDto> _notes = new();
+    private List<HubSpotCallDto> _calls = new();
+    private List<HubSpotFileDto> _contactFiles = new();
+
+    // SMS
+    private List<SmsLogDto> _smsLogs = new();
+    private bool _loadingSmsLogs;
+    private bool _showSendSms;
+    private string _smsText = "";
+    private bool _sendingSms;
+
+    private bool _loading            = true;
+    private bool _loadingDeals       = true;
+    private bool _loadingNotes       = true;
+    private bool _loadingCalls       = false;
+    private bool _loadingContactFiles = false;
+    private bool _uploadingContactFile = false;
+    private bool _showAddNote;
+    private string _newNote = "";
+    private bool _savingNote;
+
+    private string _contactPhone =>
+        _hubContact?.MobilePhone ?? _hubContact?.Phone ??
+        _contact?.MobilePhone ?? _contact?.Phone ?? "";
+
+    private string _apiKey => AppState.HubSpotApiKey;
+    private bool   _apiConfigured => !string.IsNullOrWhiteSpace(_apiKey);
+
+    private string _contactName =>
+        _hubContact != null
+            ? $"{_hubContact.FirstName} {_hubContact.LastName}".Trim()
+            : _contact != null
+                ? $"{_contact.FirstName} {_contact.LastName}".Trim()
+                : ContactId;
+
+    private string _contactInitial =>
+        (_hubContact?.FirstName ?? _contact?.FirstName ?? ContactId ?? "?")
+            .Substring(0, 1);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrWhiteSpace(AppState.HubSpotApiKey))
+            AppState.HubSpotApiKey = await HubSpotService.GetApiKeyAsync() ?? "";
+
+        if (string.IsNullOrWhiteSpace(AppState.SmsApiKey))
+            AppState.SmsApiKey = await SettingsService.GetAsync("Sms:ApiKey") ?? "";
+
+        // Load local contact first (instant)
+        _contact = await Db.HubSpotContacts
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.HsObjectId == ContactId && !c.IsDeleted);
+        _loading = false;
+
+        // Load everything in parallel from HS API
+        if (_apiConfigured)
+        {
+            await Task.WhenAll(
+                LoadHubContactAsync(),
+                LoadDealsAsync(),
+                LoadNotesAsync(),
+                LoadStagesAsync(),
+                LoadSmsLogsAsync()
+            );
+        }
+        else
+        {
+            _loadingDeals = false;
+            _loadingNotes = false;
+            await LoadSmsLogsAsync();
+        }
+    }
+
+    private async Task RefreshFromApi()
+    {
+        if (!_apiConfigured) return;
+        _loading = true;
+        StateHasChanged();
+        await Task.WhenAll(
+            LoadHubContactAsync(),
+            LoadDealsAsync(),
+            LoadNotesAsync()
+        );
+        _loading = false;
+        Snackbar.Add("اطلاعات از هاب‌اسپات به‌روز شد ✓", Severity.Success);
+    }
+
+    private async Task LoadHubContactAsync()
+    {
+        try
+        {
+            _hubContact = await HubSpotService.GetContactByIdAsync(_apiKey, ContactId);
+            StateHasChanged();
+        }
+        catch { }
+    }
+
+    private async Task LoadDealsAsync()
+    {
+        _loadingDeals = true;
+        try   { _deals = await HubSpotService.GetContactDealsAsync(_apiKey, ContactId); }
+        catch { _deals = new(); }
+        finally { _loadingDeals = false; StateHasChanged(); }
+    }
+
+    private async Task LoadNotesAsync()
+    {
+        _loadingNotes = true;
+        try   { _notes = await HubSpotService.GetContactNotesAsync(_apiKey, ContactId); }
+        catch { _notes = new(); }
+        finally { _loadingNotes = false; StateHasChanged(); }
+    }
+
+    private async Task LoadStagesAsync()
+    {
+        try { _stages = await HubSpotService.GetDealStagesAsync(_apiKey); }
+        catch { _stages = new(); }
+    }
+
+    private async Task LoadCallsAsync()
+    {
+        _loadingCalls = true;
+        StateHasChanged();
+        try   { _calls = await HubSpotService.GetContactCallsAsync(_apiKey, ContactId); }
+        catch { _calls = new(); }
+        finally { _loadingCalls = false; StateHasChanged(); }
+    }
+
+    private async Task LoadContactFilesAsync()
+    {
+        _loadingContactFiles = true;
+        StateHasChanged();
+        try   { _contactFiles = await HubSpotService.GetFilesForObjectAsync(_apiKey, "contacts", ContactId); }
+        catch { _contactFiles = new(); }
+        finally { _loadingContactFiles = false; StateHasChanged(); }
+    }
+
+    private async Task OnContactFileSelected(InputFileChangeEventArgs e)
+    {
+        if (!_apiConfigured) return;
+        var file = e.File;
+        if (file == null) return;
+        _uploadingContactFile = true;
+        StateHasChanged();
+        try
+        {
+            using var ms = new System.IO.MemoryStream();
+            await file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024).CopyToAsync(ms);
+            var bytes    = ms.ToArray();
+            var mimeType = file.ContentType ?? "application/octet-stream";
+            var uploaded = await HubSpotService.UploadFileAsync(_apiKey, file.Name, bytes, mimeType);
+            await HubSpotService.AddNoteAsync(_apiKey,
+                $"[FILE] {uploaded.Name}|{uploaded.Url}", null, ContactId);
+            _contactFiles.Insert(0, uploaded);
+            Snackbar.Add("فایل با موفقیت آپلود شد ✓", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در آپلود: {ex.Message}", Severity.Error);
+        }
+        finally { _uploadingContactFile = false; StateHasChanged(); }
+    }
+
+    private static string FormatFileSize(long bytes) =>
+        bytes switch
+        {
+            < 1024        => $"{bytes} B",
+            < 1024 * 1024 => $"{bytes / 1024.0:F1} KB",
+            _             => $"{bytes / (1024.0 * 1024):F1} MB"
+        };
+
+    private async Task LoadSmsLogsAsync()
+    {
+        _loadingSmsLogs = true;
+        try
+        {
+            var phone = _contact?.MobilePhone ?? _contact?.Phone ?? "";
+            if (!string.IsNullOrWhiteSpace(phone))
+                _smsLogs = await SmsLogService.GetLogsForContactAsync(phone);
+            else if (!string.IsNullOrWhiteSpace(ContactId))
+                _smsLogs = await SmsLogService.GetLogsAsync(ContactId);
+        }
+        catch { _smsLogs = new(); }
+        finally { _loadingSmsLogs = false; StateHasChanged(); }
+    }
+
+    private async Task SendSmsToContact()
+    {
+        if (string.IsNullOrWhiteSpace(_smsText) || string.IsNullOrWhiteSpace(_contactPhone)) return;
+        _sendingSms = true;
+        try
+        {
+            var result = await SmsService.SendAsync(_contactPhone, _smsText);
+            if (result.IsSuccess)
+            {
+                // Save log
+                var sender = await SettingsService.GetAsync("Sms:Sender") ?? "";
+                await SmsLogService.SaveLogAsync(new SmsLogDto
+                {
+                    ContactHsId  = ContactId,
+                    ContactPhone = _contactPhone,
+                    ContactName  = _contactName,
+                    Message      = _smsText,
+                    SenderNumber = sender,
+                    Status       = "sent",
+                    SentAt       = DateTime.UtcNow
+                });
+
+                // Log as HubSpot note
+                if (_apiConfigured)
+                {
+                    try { await HubSpotService.AddNoteAsync(_apiKey, $"پیامک ارسالی:\n{_smsText}", null, ContactId); }
+                    catch { }
+                }
+
+                Snackbar.Add("پیامک با موفقیت ارسال شد ✓", Severity.Success);
+                _showSendSms = false;
+                _smsText = "";
+                await LoadSmsLogsAsync();
+            }
+            else
+            {
+                Snackbar.Add($"خطا در ارسال: {result.Error}", Severity.Error);
+            }
+        }
+        finally { _sendingSms = false; }
+    }
+
+    private async void OnTabChanged(int idx)
+    {
+        if (!_apiConfigured) return;
+        // Tab 2 = Calls (0-based: Deals=0, Notes=1, Calls=2, SMS=3, Files=4)
+        if (idx == 2 && !_calls.Any() && !_loadingCalls)
+            await LoadCallsAsync();
+        if (idx == 4 && !_contactFiles.Any() && !_loadingContactFiles)
+            await LoadContactFilesAsync();
+    }
+
+    private void ToggleAddNote()
+    {
+        _showAddNote = !_showAddNote;
+        _newNote = "";
+    }
+
+    private async Task AddNote()
+    {
+        if (string.IsNullOrWhiteSpace(_newNote)) return;
+        _savingNote = true;
+        try
+        {
+            await HubSpotService.AddNoteAsync(_apiKey, _newNote, null, ContactId);
+            Snackbar.Add("یادداشت ذخیره شد ✓", Severity.Success);
+            _showAddNote = false;
+            _newNote = "";
+            await LoadNotesAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا: {ex.Message}", Severity.Error);
+        }
+        finally { _savingNote = false; }
+    }
+
+    private string GetStageLabel(string? stageId)
+    {
+        if (string.IsNullOrWhiteSpace(stageId)) return "—";
+        return _stages.FirstOrDefault(s => s.Id == stageId)?.Label ?? stageId;
+    }
+
+    private Color GetStageColor(string? stageId) => stageId switch
+    {
+        "closedwon"    => Color.Success,
+        "closedlost"   => Color.Error,
+        "contractsent" => Color.Warning,
+        _              => Color.Primary
+    };
+
+    private RenderFragment ProfileCell(string label, string? value, string icon) => __builder =>
+    {
+        <div class="profile-info-cell">
+            <div class="profile-info-label">
+                <MudIcon Icon="@icon" Size="Size.Small" Style="vertical-align:middle;margin-left:3px;" />
+                @label
+            </div>
+            <div class="profile-info-value" dir="ltr" style="text-align:right;">
+                @(string.IsNullOrWhiteSpace(value) ? "—" : value)
+            </div>
+        </div>;
+    };
+}

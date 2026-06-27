@@ -1,0 +1,114 @@
+@inherits LayoutComponentBase
+@inject AppStateService AppState
+@inject IAuthService AuthService
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<MudThemeProvider Theme="@_theme" IsDarkMode="@AppState.IsDarkMode" />
+<MudPopoverProvider />
+<MudDialogProvider FullWidth="true" MaxWidth="MaxWidth.Medium" CloseOnEscapeKey="true" />
+<MudSnackbarProvider />
+
+@if (!AppState.IsAuthenticated)
+{
+    <LoginPage OnLoginSuccess="HandleLoginSuccess" />
+}
+else
+{
+    <MudLayout dir="rtl">
+        <!-- Top AppBar -->
+        <MudAppBar Elevation="2" Dense="false" Fixed="true" Style="background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%); z-index:1200;">
+            <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start"
+                           OnClick="@(() => _drawerOpen = !_drawerOpen)" />
+            <img src="/logo.svg" alt="PicoERP" style="height:36px; width:36px; margin-left:8px; border-radius:6px; background:white; padding:2px;" />
+            <MudText Typo="Typo.h6" Style="font-weight:700; letter-spacing:0;">
+                پیکو ERP
+            </MudText>
+            <MudText Typo="Typo.caption" Style="margin-right:12px; opacity:0.8;">@AppState.BusinessName</MudText>
+            <MudSpacer />
+            <!-- Persian Clock -->
+            <PersianClock />
+            <MudDivider Vertical="true" FlexItem="true" Style="margin:0 10px; opacity:0.3; height:28px; align-self:center;" />
+            <!-- Search -->
+            <MudTextField @bind-Value="_searchQuery" Placeholder="جستجو..." Variant="Variant.Outlined"
+                          Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+                          AdornmentColor="Color.Inherit" Margin="Margin.Dense"
+                          Style="max-width:220px; background:rgba(255,255,255,0.1); border-radius:8px; color:white;"
+                          Class="appbar-search" />
+            <!-- Theme Toggle -->
+            <MudTooltip Text="@(AppState.IsDarkMode ? "حالت روشن" : "حالت تاریک")">
+                <MudIconButton Icon="@(AppState.IsDarkMode ? Icons.Material.Filled.WbSunny : Icons.Material.Filled.NightlightRound)"
+                               Color="Color.Inherit" OnClick="@(() => AppState.ToggleDarkMode())" />
+            </MudTooltip>
+            <!-- User Menu -->
+            <MudMenu Icon="@Icons.Material.Filled.AccountCircle" Color="Color.Inherit"
+                     AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                <MudMenuItem>
+                    <MudText Typo="Typo.subtitle1" Style="font-weight:700;">@AppState.CurrentUser?.DisplayName</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@GetRolePersian(AppState.CurrentUser?.Role)</MudText>
+                </MudMenuItem>
+                <MudDivider />
+                <MudMenuItem OnClick="@HandleLogout" Icon="@Icons.Material.Filled.Logout" IconColor="Color.Error">
+                    خروج از سیستم
+                </MudMenuItem>
+            </MudMenu>
+        </MudAppBar>
+
+        <!-- Navigation Drawer (RTL - opens from right) -->
+        <MudDrawer @bind-Open="_drawerOpen" Elevation="3" ClipMode="DrawerClipMode.Always"
+                   Variant="DrawerVariant.Persistent" Anchor="Anchor.Right"
+                   Style="border-left: 1px solid var(--mud-palette-divider);">
+            <NavMenu />
+            <div style="padding:10px 16px; border-top:1px solid var(--mud-palette-divider); margin-top:auto;">
+                <MudText Typo="Typo.caption" Style="color:var(--mud-palette-text-secondary); font-size:11px; display:block; text-align:center;" dir="ltr">
+                    v@(typeof(MainLayout).Assembly.GetName().Version?.ToString(3) ?? "1.2.0")
+                </MudText>
+            </div>
+        </MudDrawer>
+
+        <!-- Main Content -->
+        <MudMainContent Style="padding-top:80px; min-height:100vh;">
+            <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+                @Body
+            </MudContainer>
+        </MudMainContent>
+    </MudLayout>
+}
+
+@code {
+    private bool _drawerOpen = true;
+    private string _searchQuery = "";
+    private MudTheme _theme = PicoTheme.Create();
+
+    protected override async Task OnInitializedAsync()
+    {
+        AppState.OnChange += StateHasChanged;
+        // Try restore session from storage
+    }
+
+    private void HandleLoginSuccess(UserInfoDto user)
+    {
+        AppState.SetUser(user);
+        Snackbar.Add($"خوش آمدید، {user.DisplayName}!", Severity.Success);
+        StateHasChanged();
+    }
+
+    private async Task HandleLogout()
+    {
+        if (AppState.CurrentUser != null)
+            await AuthService.LogoutAsync(AppState.CurrentUser.Id);
+        AppState.Logout();
+        Nav.NavigateTo("/", true);
+    }
+
+    private static string GetRolePersian(string? role) => role switch
+    {
+        "SystemAdmin" => "مدیر سیستم",
+        "Manager" => "مدیر",
+        "Accountant" => "حسابدار",
+        "Employee" => "کارمند",
+        _ => ""
+    };
+
+    public void Dispose() => AppState.OnChange -= StateHasChanged;
+}

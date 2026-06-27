@@ -1,0 +1,64 @@
+@inject IFinancialAccountService AccountService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent><MudText Typo="Typo.h6"><MudIcon Icon="@Icons.Material.Filled.SwapHoriz" Class="ml-2" />انتقال وجه بین حساب‌ها</MudText></TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2" dir="rtl">
+            <MudItem xs="12">
+                <MudSelect @bind-Value="_dto.FromAccountId" Label="از حساب *" Variant="Variant.Outlined" Required="true">
+                    @foreach (var acc in Accounts)
+                    {
+                        <MudSelectItem Value="@acc.Id">@acc.Name — @AppState.FormatAmount(acc.CurrentBalance)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <MudSelect @bind-Value="_dto.ToAccountId" Label="به حساب *" Variant="Variant.Outlined" Required="true">
+                    @foreach (var acc in Accounts.Where(a => a.Id != _dto.FromAccountId))
+                    {
+                        <MudSelectItem Value="@acc.Id">@acc.Name — @AppState.FormatAmount(acc.CurrentBalance)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <MudNumericField @bind-Value="_dto.Amount" Label="مبلغ *" Variant="Variant.Outlined" Required="true" Min="1" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudDatePicker @bind-Date="_date" Label="تاریخ" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_dto.Description" Label="توضیحات" Variant="Variant.Outlined" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Outlined">انصراف</MudButton>
+        <MudButton OnClick="Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@_loading">انتقال</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public List<FinancialAccountDto> Accounts { get; set; } = new();
+    [Parameter] public string Username { get; set; } = "system";
+    [Inject] AppStateService AppState { get; set; } = default!;
+    private CreateAccountTransferDto _dto = new();
+    private DateTime? _date = DateTime.Today;
+    private bool _loading;
+
+    private async Task Submit()
+    {
+        if (_dto.FromAccountId == 0 || _dto.ToAccountId == 0 || _dto.Amount <= 0) { Snackbar.Add("لطفاً فیلدها را پر کنید", Severity.Warning); return; }
+        _dto.Date = _date ?? DateTime.Today;
+        _loading = true;
+        try
+        {
+            var result = await AccountService.TransferAsync(_dto, Username);
+            if (result.IsSuccess) { Snackbar.Add("انتقال انجام شد", Severity.Success); MudDialog.Close(DialogResult.Ok(true)); }
+            else Snackbar.Add(result.Error ?? "خطا", Severity.Error);
+        }
+        finally { _loading = false; }
+    }
+    private void Cancel() => MudDialog.Cancel();
+}

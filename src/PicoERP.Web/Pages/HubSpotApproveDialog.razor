@@ -1,0 +1,126 @@
+@inject AppStateService AppState
+@using PicoERP.Application.DTOs
+@using PicoERP.Domain.Entities
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success"
+                     Style="vertical-align:middle; margin-left:6px;" />
+            تأیید دیل — ثبت به عنوان درآمد
+        </MudText>
+    </TitleContent>
+
+    <DialogContent>
+        <div dir="rtl">
+            @* Deal summary (read-only) *@
+            <MudPaper Elevation="0" Style="background:#F8FAF5; border:1px solid #C8E6C9; border-radius:10px; padding:14px 18px;" Class="mb-4">
+                <MudGrid Spacing="1">
+                    <MudItem xs="6">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">نام دیل</MudText>
+                        <MudText Typo="Typo.body1" Style="font-weight:700;">@Deal.DealName</MudText>
+                    </MudItem>
+                    <MudItem xs="6">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">ID هاب‌اسپات</MudText>
+                        <MudText Typo="Typo.body2" dir="ltr" Style="text-align:right;">@Deal.HubSpotDealId</MudText>
+                    </MudItem>
+                    <MudItem xs="6">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">مرحله</MudText>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">
+                            @(Deal.Stage ?? "closedwon")
+                        </MudChip>
+                    </MudItem>
+                    <MudItem xs="6">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">مخاطب</MudText>
+                        <MudText Typo="Typo.body2">@(Deal.ContactName ?? "—")</MudText>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+
+            @* Editable income fields *@
+            <MudGrid Spacing="3">
+                <MudItem xs="12">
+                    <MudNumericField @bind-Value="_amount"
+                                     Label="مبلغ درآمد *"
+                                     Variant="Variant.Outlined"
+                                     Format="N0"
+                                     Min="0"
+                                     Adornment="Adornment.End"
+                                     AdornmentText="@AppState.CurrencyUnit"
+                                     HelperText="مبلغ پیش‌فرض از دیل HubSpot گرفته شده — در صورت نیاز ویرایش کنید" />
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudSelect @bind-Value="_categoryId"
+                               Label="دسته‌بندی درآمد *"
+                               Variant="Variant.Outlined"
+                               Required="true">
+                        @foreach (var cat in Categories)
+                        {
+                            <MudSelectItem Value="@cat.Id">@cat.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudDatePicker @bind-Date="_date"
+                                   Label="تاریخ درآمد"
+                                   Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_description"
+                                  Label="توضیحات"
+                                  Variant="Variant.Outlined"
+                                  Lines="2"
+                                  Placeholder="@($"دیل HubSpot: {Deal.DealName} — {Deal.ContactName}")" />
+                </MudItem>
+            </MudGrid>
+        </div>
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="@MudDialog.Cancel" Variant="Variant.Text">انصراف</MudButton>
+        <MudButton Color="Color.Success" Variant="Variant.Filled"
+                   StartIcon="@Icons.Material.Filled.CheckCircle"
+                   OnClick="Submit"
+                   Disabled="@(_categoryId == 0 || _amount <= 0)">
+            تأیید و ثبت درآمد
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public PendingDeal Deal { get; set; } = default!;
+    [Parameter] public List<IncomeCategoryDto> Categories { get; set; } = new();
+
+    private decimal _amount;
+    private int _categoryId;
+    private DateTime? _date = DateTime.Today;
+    private string? _description;
+
+    protected override void OnParametersSet()
+    {
+        _amount      = Deal.Amount;
+        _description = $"دیل HubSpot: {Deal.DealName}" +
+                       (string.IsNullOrWhiteSpace(Deal.ContactName) ? "" : $" — {Deal.ContactName}");
+        // Pre-select "سایر" (id=10) or the first available category
+        _categoryId = Categories.FirstOrDefault(c => c.Name.Contains("سایر"))?.Id
+                   ?? Categories.FirstOrDefault()?.Id
+                   ?? 0;
+    }
+
+    private void Submit()
+    {
+        var dto = new CreateIncomeDto
+        {
+            CategoryId    = _categoryId,
+            Amount        = _amount,
+            Date          = _date ?? DateTime.Today,
+            Description   = _description,
+            InvoiceNumber = $"HubSpot-{Deal.HubSpotDealId}"
+        };
+        MudDialog.Close(DialogResult.Ok(dto));
+    }
+}

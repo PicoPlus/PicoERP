@@ -1,0 +1,137 @@
+@inject IAuthService AuthService
+@inject ISnackbar Snackbar
+
+<div class="pico-login-container" dir="rtl">
+    <div class="pico-login-bg">
+        <div class="login-bg-shape shape-1"></div>
+        <div class="login-bg-shape shape-2"></div>
+        <div class="login-bg-shape shape-3"></div>
+    </div>
+    <div class="pico-login-card">
+        <!-- Logo & Title -->
+        <div class="login-header">
+            <div class="login-logo">
+                <MudIcon Icon="@Icons.Material.Filled.BusinessCenter" Style="font-size:48px; color:#1565C0;" />
+            </div>
+            <h1 class="login-title">پیکو ERP</h1>
+            <p class="login-subtitle">سیستم مدیریت کافه نت</p>
+        </div>
+
+        <!-- Form -->
+        <div class="login-form">
+            <MudTextField @bind-Value="_username"
+                          Label="نام کاربری"
+                          Variant="Variant.Outlined"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Person"
+                          AdornmentColor="Color.Primary"
+                          Class="mb-3 login-field"
+                          Disabled="@_loading" />
+
+            <MudTextField @bind-Value="_password"
+                          Label="رمز عبور"
+                          Variant="Variant.Outlined"
+                          InputType="@_passwordInputType"
+                          Adornment="Adornment.End"
+                          AdornmentIcon="@_passwordIcon"
+                          OnAdornmentClick="TogglePasswordVisibility"
+                          Class="mb-4 login-field"
+                          Disabled="@_loading"
+                          OnKeyDown="@HandleKeyDown" />
+
+            <MudButton FullWidth="true"
+                       Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       Size="Size.Large"
+                       OnClick="@HandleLogin"
+                       Disabled="@_loading"
+                       Class="login-btn">
+                @if (_loading)
+                {
+                    <MudProgressCircular Color="Color.Inherit" Size="Size.Small" Indeterminate="true" Class="ml-2" />
+                    <span>در حال ورود...</span>
+                }
+                else
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.Login" Class="ml-1" />
+                    <span>ورود به سیستم</span>
+                }
+            </MudButton>
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <div class="login-error">
+                    <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" />
+                    <span>@_errorMessage</span>
+                </div>
+            }
+        </div>
+
+        <div class="login-footer">
+            <MudText Typo="Typo.caption" Color="Color.Default">
+                پیکو ERP نسخه ۱.۰.۰ — تمامی حقوق محفوظ است
+            </MudText>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public EventCallback<UserInfoDto> OnLoginSuccess { get; set; }
+
+    private string _username = "";
+    private string _password = "";
+    private bool _loading = false;
+    private string _errorMessage = "";
+    private InputType _passwordInputType = InputType.Password;
+    private string _passwordIcon = Icons.Material.Filled.VisibilityOff;
+
+    private void TogglePasswordVisibility()
+    {
+        if (_passwordInputType == InputType.Password)
+        {
+            _passwordInputType = InputType.Text;
+            _passwordIcon = Icons.Material.Filled.Visibility;
+        }
+        else
+        {
+            _passwordInputType = InputType.Password;
+            _passwordIcon = Icons.Material.Filled.VisibilityOff;
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await HandleLogin();
+    }
+
+    private async Task HandleLogin()
+    {
+        if (string.IsNullOrWhiteSpace(_username) || string.IsNullOrWhiteSpace(_password))
+        {
+            _errorMessage = "لطفاً نام کاربری و رمز عبور را وارد کنید";
+            return;
+        }
+        _loading = true;
+        _errorMessage = "";
+        try
+        {
+            var result = await AuthService.LoginAsync(new LoginRequestDto
+            {
+                Username = _username,
+                Password = _password
+            });
+            if (result.IsSuccess && result.Data != null)
+            {
+                await OnLoginSuccess.InvokeAsync(result.Data.User);
+            }
+            else
+            {
+                _errorMessage = result.Error ?? "خطا در ورود";
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

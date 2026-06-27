@@ -1,0 +1,460 @@
+@using PicoERP.Application.DTOs
+@using PicoERP.Application.Interfaces
+@inject IHubSpotService HubSpotService
+@inject MudBlazor.ISnackbar Snackbar
+@inject MudBlazor.IDialogService DialogService
+
+<MudDialog Style="max-height:92vh; overflow-y:auto;">
+    <TitleContent>
+        <div style="display:flex;align-items:center;gap:10px;">
+            <MudIcon Icon="@(IsEdit ? Icons.Material.Filled.Edit : Icons.Material.Filled.Handshake)"
+                     Style="color:#0091AE;" />
+            <MudText Typo="Typo.h6">@(IsEdit ? "ویرایش دیل" : "ایجاد دیل جدید")</MudText>
+        </div>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" dir="rtl">
+            <MudGrid Spacing="3">
+
+                <!-- Deal name -->
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_model.DealName"
+                                  Label="نام دیل *"
+                                  Variant="Variant.Outlined"
+                                  Required="true"
+                                  RequiredError="نام دیل الزامی است" />
+                </MudItem>
+
+                <!-- Stage -->
+                <MudItem xs="12" sm="6">
+                    @if (_loadingStages)
+                    {
+                        <MudSkeleton Height="56px" />
+                    }
+                    else
+                    {
+                        <MudSelect @bind-Value="_model.Stage"
+                                   Label="مرحله دیل"
+                                   Variant="Variant.Outlined"
+                                   AnchorOrigin="Origin.BottomCenter">
+                            @foreach (var stage in _stages)
+                            {
+                                <MudSelectItem Value="@stage.Id">@stage.Label</MudSelectItem>
+                            }
+                        </MudSelect>
+                    }
+                </MudItem>
+
+                <!-- Amount -->
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="_model.Amount"
+                                     Label="مبلغ کل"
+                                     Variant="Variant.Outlined"
+                                     Format="N0"
+                                     Min="0" />
+                </MudItem>
+
+                <!-- Close date -->
+                <MudItem xs="12" sm="6">
+                    <MudDatePicker @bind-Date="_closeDate"
+                                   Label="تاریخ بستن"
+                                   Variant="Variant.Outlined"
+                                   Clearable="true" />
+                </MudItem>
+
+                <!-- Associated contact — live search -->
+                <MudItem xs="12" sm="6">
+                    <MudAutocomplete T="HubSpotContactDto"
+                                     Label="مخاطب مرتبط"
+                                     Variant="Variant.Outlined"
+                                     @bind-Value="_selectedContact"
+                                     SearchFuncWithCancel="SearchContacts"
+                                     ToStringFunc="@(c => c == null ? "" : $"{c.FirstName} {c.LastName}".Trim())"
+                                     ResetValueOnEmptyText="true"
+                                     ShowProgressIndicator="true"
+                                     Clearable="true"
+                                     Placeholder="جستجو بر اساس نام، موبایل یا کد ملی...">
+                        <ItemTemplate Context="item">
+                            <div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
+                                <MudAvatar Size="Size.Small"
+                                           Style="background:#FF7A59;color:#fff;font-size:0.72rem;width:30px;height:30px;flex-shrink:0;">
+                                    @((item.FirstName ?? item.Id ?? "?").Substring(0,1).ToUpper())
+                                </MudAvatar>
+                                <div>
+                                    <div style="font-weight:600;font-size:0.875rem;">
+                                        @($"{item.FirstName} {item.LastName}".Trim())
+                                    </div>
+                                    <div style="font-size:0.72rem;color:#6b7280;">
+                                        @(item.MobilePhone ?? item.Phone ?? item.Email ?? "")
+                                    </div>
+                                </div>
+                            </div>
+                        </ItemTemplate>
+                        <NoItemsTemplate>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-4 py-2">
+                                مخاطبی یافت نشد
+                            </MudText>
+                        </NoItemsTemplate>
+                    </MudAutocomplete>
+
+                    @if (_selectedContact != null)
+                    {
+                        <div style="display:flex;align-items:center;gap:8px;margin-top:6px;padding:8px 12px;background:#fff7f5;border:1px solid #ffddd3;border-radius:8px;">
+                            <MudAvatar Size="Size.Small"
+                                       Style="background:#FF7A59;color:#fff;font-size:0.75rem;width:32px;height:32px;">
+                                @((_selectedContact.FirstName ?? "?").Substring(0,1).ToUpper())
+                            </MudAvatar>
+                            <div style="flex:1;">
+                                <div style="font-weight:600;font-size:0.875rem;">
+                                    @($"{_selectedContact.FirstName} {_selectedContact.LastName}".Trim())
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(_selectedContact.MobilePhone ?? _selectedContact.Phone))
+                                {
+                                    <div style="font-size:0.72rem;color:#6b7280;" dir="ltr">
+                                        @(_selectedContact.MobilePhone ?? _selectedContact.Phone)
+                                    </div>
+                                }
+                            </div>
+                            <MudIconButton Icon="@Icons.Material.Filled.Close"
+                                           Size="Size.Small" Color="Color.Default"
+                                           OnClick="@(() => _selectedContact = null)" />
+                        </div>
+                    }
+                </MudItem>
+
+                <!-- Description -->
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_model.Description"
+                                  Label="توضیحات"
+                                  Variant="Variant.Outlined"
+                                  Lines="3"
+                                  AutoGrow="true" />
+                </MudItem>
+            </MudGrid>
+
+            <!-- ── Line Items ──────────────────────────────────────────── -->
+            <MudDivider Class="my-4" />
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+                <MudText Typo="Typo.subtitle1" Style="font-weight:700;">
+                    <MudIcon Icon="@Icons.Material.Filled.Inventory2"
+                             Style="vertical-align:middle;margin-left:6px;color:#0091AE;" />
+                    اقلام / محصولات
+                </MudText>
+                <div style="display:flex;gap:8px;">
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.ShoppingCart"
+                               Color="Color.Secondary"
+                               Disabled="@_loadingProducts"
+                               OnClick="OpenProductPicker">
+                        @(_loadingProducts ? "بارگذاری..." : "انتخاب از کاتالوگ")
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.Add"
+                               Color="Color.Primary"
+                               OnClick="AddLineItem">
+                        افزودن ردیف دستی
+                    </MudButton>
+                </div>
+            </div>
+
+            @if (_products.Any() && _showProductPicker)
+            {
+                <MudPaper Elevation="0" Style="border:1px solid #7c3aed;border-radius:10px;padding:14px;margin-bottom:14px;background:#faf5ff;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                        <MudText Typo="Typo.subtitle2" Style="color:#7c3aed;font-weight:700;">
+                            <MudIcon Icon="@Icons.Material.Filled.Category" Style="vertical-align:middle;margin-left:4px;" />
+                            کاتالوگ محصولات (@_products.Count محصول)
+                        </MudText>
+                        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                                       OnClick="@(() => _showProductPicker = false)" />
+                    </div>
+                    <MudTextField @bind-Value="_productSearch" Placeholder="جستجو در محصولات..."
+                                  Variant="Variant.Outlined" Margin="Margin.Dense"
+                                  Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+                                  Immediate="true" Class="mb-2" />
+                    <div style="max-height:220px;overflow-y:auto;">
+                        @foreach (var p in _filteredProducts)
+                        {
+                            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:7px;cursor:pointer;transition:background .12s;background:var(--mud-palette-surface);"
+                                 @onclick="@(() => AddProductAsLineItem(p))">
+                                <div style="flex:1;">
+                                    <div style="font-weight:600;font-size:.875rem;">@p.Name</div>
+                                    @if (!string.IsNullOrWhiteSpace(p.Sku))
+                                    {<MudText Typo="Typo.caption" Color="Color.Secondary">SKU: @p.Sku</MudText>}
+                                </div>
+                                <div style="font-weight:700;font-size:.875rem;color:#2E7D32;white-space:nowrap;">
+                                    @p.Price.ToString("N0")
+                                </div>
+                                <MudIconButton Icon="@Icons.Material.Filled.AddCircle"
+                                               Size="Size.Small" Color="Color.Secondary"
+                                               OnClick="@(() => AddProductAsLineItem(p))" />
+                            </div>
+                        }
+                        @if (!_filteredProducts.Any())
+                        {
+                            <div style="text-align:center;padding:12px;color:#9ca3af;font-size:.85rem;">
+                                محصولی یافت نشد
+                            </div>
+                        }
+                    </div>
+                </MudPaper>
+            }
+
+            @if (_lineItems.Any())
+            {
+                <MudPaper Elevation="0" Style="border:1px solid var(--mud-palette-divider);border-radius:8px;overflow:hidden;">
+                    <!-- header -->
+                    <div style="display:grid;grid-template-columns:1fr 90px 110px 100px 36px;gap:8px;padding:8px 12px;background:var(--mud-palette-surface);font-size:0.75rem;font-weight:600;color:#6b7280;border-bottom:1px solid var(--mud-palette-divider);">
+                        <span>نام محصول</span>
+                        <span style="text-align:center;">تعداد</span>
+                        <span style="text-align:center;">قیمت واحد</span>
+                        <span style="text-align:center;">جمع</span>
+                        <span></span>
+                    </div>
+                    @foreach (var (li, idx) in _lineItems.Select((x, i) => (x, i)))
+                    {
+                        <div style="display:grid;grid-template-columns:1fr 90px 110px 100px 36px;gap:8px;padding:8px 12px;border-bottom:1px solid var(--mud-palette-divider);align-items:center;">
+                            <MudTextField @bind-Value="li.Name"
+                                          Placeholder="نام محصول"
+                                          Variant="Variant.Text"
+                                          Margin="Margin.Dense"
+                                          DisableUnderLine="false" />
+                            <MudNumericField T="decimal"
+                                             Value="li.Quantity"
+                                             ValueChanged="@(v => { li.Quantity = v; li.Amount = Math.Round(v * li.UnitPrice, 2); StateHasChanged(); })"
+                                             Placeholder="تعداد"
+                                             Variant="Variant.Text"
+                                             Margin="Margin.Dense"
+                                             Min="0" Format="N2"
+                                             DisableUnderLine="false" />
+                            <MudNumericField T="decimal"
+                                             Value="li.UnitPrice"
+                                             ValueChanged="@(v => { li.UnitPrice = v; li.Amount = Math.Round(li.Quantity * v, 2); StateHasChanged(); })"
+                                             Placeholder="قیمت"
+                                             Variant="Variant.Text"
+                                             Margin="Margin.Dense"
+                                             Min="0" Format="N0"
+                                             DisableUnderLine="false" />
+                            <div style="text-align:center;font-size:0.85rem;font-weight:600;color:#2E7D32;">
+                                @li.Amount.ToString("N0")
+                            </div>
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                           Size="Size.Small" Color="Color.Error"
+                                           OnClick="@(() => RemoveLineItem(idx))" />
+                        </div>
+                    }
+                    <!-- total row -->
+                    <div style="display:flex;justify-content:flex-end;align-items:center;gap:16px;padding:10px 12px;background:var(--mud-palette-surface);">
+                        <MudText Typo="Typo.body2" Style="font-weight:700;">جمع کل اقلام:</MudText>
+                        <MudText Typo="Typo.body1" Style="font-weight:800;color:#2E7D32;">
+                            @_lineItems.Sum(x => x.Amount).ToString("N0")
+                        </MudText>
+                    </div>
+                </MudPaper>
+            }
+            else
+            {
+                <div style="text-align:center;padding:16px;color:#9ca3af;font-size:0.85rem;">
+                    هنوز ردیفی اضافه نشده — دکمه «افزودن ردیف» را بزنید
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3" Dense="true">@_error</MudAlert>
+            }
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text">انصراف</MudButton>
+        <MudButton OnClick="Submit" Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Save"
+                   Disabled="@_saving">
+            @(_saving ? "در حال ذخیره..." : (IsEdit ? "ذخیره تغییرات" : "ایجاد دیل"))
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public string ApiKey { get; set; } = string.Empty;
+    [Parameter] public bool IsEdit { get; set; }
+    [Parameter] public HubSpotDealDto? ExistingDeal { get; set; }
+
+    private MudForm _form = null!;
+    private CreateHubSpotDealDto _model = new();
+    private List<HubSpotDealStageDto> _stages = new();
+    private DateTime? _closeDate;
+    private bool _saving;
+    private bool _loadingStages = true;
+    private string _error = "";
+
+    // Contact search
+    private HubSpotContactDto? _selectedContact;
+
+    // Line items (local working copies)
+    private List<HubSpotLineItemDto> _lineItems = new();
+    private List<HubSpotProductDto>  _products  = new();
+    private bool _loadingProducts   = false;
+    private bool _showProductPicker = false;
+    private string _productSearch   = "";
+
+    private IEnumerable<HubSpotProductDto> _filteredProducts =>
+        string.IsNullOrWhiteSpace(_productSearch)
+            ? _products
+            : _products.Where(p =>
+                (p.Name?.Contains(_productSearch, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (p.Sku?.Contains(_productSearch, StringComparison.OrdinalIgnoreCase) ?? false));
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (IsEdit && ExistingDeal != null)
+        {
+            _model = new CreateHubSpotDealDto
+            {
+                DealName            = ExistingDeal.DealName,
+                Stage               = ExistingDeal.Stage,
+                Description         = ExistingDeal.Description,
+                Amount              = ExistingDeal.Amount,
+                AssociatedContactId = ExistingDeal.AssociatedContactId,
+                CloseDate           = ExistingDeal.CloseDate
+            };
+            _closeDate = ExistingDeal.CloseDate;
+
+            // Pre-load associated contact card
+            if (!string.IsNullOrWhiteSpace(ExistingDeal.AssociatedContactId))
+            {
+                _selectedContact = new HubSpotContactDto
+                {
+                    Id          = ExistingDeal.AssociatedContactId,
+                    FirstName   = ExistingDeal.ContactFirstName,
+                    LastName    = ExistingDeal.ContactLastName,
+                    Email       = ExistingDeal.ContactEmail,
+                    Phone       = ExistingDeal.ContactPhone,
+                    MobilePhone = ExistingDeal.ContactPhone
+                };
+            }
+
+            // Pre-load existing line items
+            if (ExistingDeal.LineItems.Any())
+                _lineItems = ExistingDeal.LineItems
+                    .Select(li => new HubSpotLineItemDto
+                    {
+                        Id        = li.Id,
+                        Name      = li.Name,
+                        Quantity  = li.Quantity,
+                        UnitPrice = li.UnitPrice,
+                        Amount    = li.Amount,
+                        Sku       = li.Sku
+                    }).ToList();
+        }
+
+        try   { _stages = await HubSpotService.GetDealStagesAsync(ApiKey); }
+        catch { _stages = new(); }
+        finally { _loadingStages = false; }
+    }
+
+    // ── Contact autocomplete ─────────────────────────────────────────────────
+
+    private async Task<IEnumerable<HubSpotContactDto>> SearchContacts(
+        string value, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length < 2)
+            return Enumerable.Empty<HubSpotContactDto>();
+        try { return await HubSpotService.SearchContactsAsync(ApiKey, value, 10); }
+        catch { return Enumerable.Empty<HubSpotContactDto>(); }
+    }
+
+    // ── Products ─────────────────────────────────────────────────────────────
+
+    private async Task OpenProductPicker()
+    {
+        _showProductPicker = !_showProductPicker;
+        if (_showProductPicker && !_products.Any())
+        {
+            _loadingProducts = true;
+            StateHasChanged();
+            try   { _products = await HubSpotService.GetProductsAsync(ApiKey); }
+            catch { _products = new(); }
+            finally { _loadingProducts = false; StateHasChanged(); }
+        }
+    }
+
+    private void AddProductAsLineItem(HubSpotProductDto product)
+    {
+        _lineItems.Add(new HubSpotLineItemDto
+        {
+            Name      = product.Name,
+            Quantity  = 1,
+            UnitPrice = product.Price,
+            Amount    = product.Price,
+            Sku       = product.Sku,
+            Description = product.Description
+        });
+        StateHasChanged();
+    }
+
+    // ── Line items ───────────────────────────────────────────────────────────
+
+    private void AddLineItem()
+    {
+        _lineItems.Add(new HubSpotLineItemDto
+        {
+            Quantity  = 1,
+            UnitPrice = 0,
+            Amount    = 0
+        });
+    }
+
+    private void RemoveLineItem(int idx)
+    {
+        if (idx >= 0 && idx < _lineItems.Count)
+            _lineItems.RemoveAt(idx);
+    }
+
+    // ── Submit ───────────────────────────────────────────────────────────────
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task Submit()
+    {
+        await _form.Validate();
+        if (!_form.IsValid) return;
+
+        _model.CloseDate           = _closeDate;
+        _model.AssociatedContactId = _selectedContact?.Id;
+        _error  = "";
+        _saving = true;
+
+        try
+        {
+            if (IsEdit && ExistingDeal != null)
+            {
+                await HubSpotService.UpdateDealAsync(ApiKey, ExistingDeal.Id, _model);
+
+                // Persist new line items (existing ones keep their IDs from HubSpot)
+                foreach (var li in _lineItems.Where(x => string.IsNullOrEmpty(x.Id)))
+                    await HubSpotService.CreateLineItemAsync(ApiKey, ExistingDeal.Id, li);
+
+                var updated = await HubSpotService.GetDealByIdAsync(ApiKey, ExistingDeal.Id);
+                MudDialog.Close(DialogResult.Ok(updated));
+            }
+            else
+            {
+                var created = await HubSpotService.CreateDealAsync(ApiKey, _model);
+
+                // Create line items for the new deal
+                foreach (var li in _lineItems)
+                    await HubSpotService.CreateLineItemAsync(ApiKey, created.Id, li);
+
+                var full = await HubSpotService.GetDealByIdAsync(ApiKey, created.Id);
+                MudDialog.Close(DialogResult.Ok(full ?? created));
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"خطا: {ex.Message}";
+        }
+        finally { _saving = false; }
+    }
+}

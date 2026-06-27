@@ -1,0 +1,140 @@
+@page "/backup"
+@inject IBackupService BackupService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>پشتیبان‌گیری — پیکو ERP</PageTitle>
+
+<div class="pico-page" dir="rtl">
+    <div class="page-header">
+        <MudText Typo="Typo.h4" Class="page-title">مدیریت پشتیبان‌گیری</MudText>
+    </div>
+
+    <MudGrid Spacing="3">
+        <!-- Backup Actions -->
+        <MudItem xs="12" md="4">
+            <MudCard Elevation="2" Class="pico-card">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">عملیات پشتیبان</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudButton FullWidth="true" Variant="Variant.Filled" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Backup" OnClick="CreateBackup"
+                               Disabled="@_loading" Class="mb-3">
+                        ایجاد پشتیبان جدید
+                    </MudButton>
+                    <MudButton FullWidth="true" Variant="Variant.Outlined" Color="Color.Warning"
+                               StartIcon="@Icons.Material.Filled.Tune" OnClick="OptimizeDb"
+                               Disabled="@_loading" Class="mb-3">
+                        بهینه‌سازی پایگاه داده
+                    </MudButton>
+                    @if (_loading)
+                    {
+                        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mt-2" />
+                    }
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <!-- Backup List -->
+        <MudItem xs="12" md="8">
+            <MudCard Elevation="2" Class="pico-card">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">فایل‌های پشتیبان</MudText>
+                    </CardHeaderContent>
+                    <CardHeaderActions>
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="LoadBackups">به‌روزرسانی</MudButton>
+                    </CardHeaderActions>
+                </MudCardHeader>
+                <MudCardContent Class="pa-0">
+                    @if (_backups.Any())
+                    {
+                        <MudTable Items="_backups" Dense="true" Hover="true">
+                            <HeaderContent>
+                                <MudTh>نام فایل</MudTh>
+                                <MudTh>تاریخ ایجاد</MudTh>
+                                <MudTh>حجم</MudTh>
+                                <MudTh>عملیات</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd><MudIcon Icon="@Icons.Material.Filled.Storage" Size="Size.Small" Class="ml-1" />@context.FileName</MudTd>
+                                <MudTd dir="ltr">@AppState.FormatDate(context.CreatedAt)</MudTd>
+                                <MudTd>@context.FormattedSize</MudTd>
+                                <MudTd>
+                                    <MudButton Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined"
+                                               OnClick="@(() => RestoreBackup(context))">بازیابی</MudButton>
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    }
+                    else
+                    {
+                        <div class="empty-state-sm">
+                            <MudIcon Icon="@Icons.Material.Filled.BackupTable" Style="font-size:48px;" />
+                            <span>هیچ فایل پشتیبانی وجود ندارد</span>
+                        </div>
+                    }
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+</div>
+
+@code {
+    private List<BackupInfo> _backups = new();
+    private bool _loading;
+
+    protected override async Task OnInitializedAsync() => await LoadBackups();
+
+    private async Task LoadBackups()
+    {
+        _backups = await BackupService.GetBackupsAsync();
+    }
+
+    private async Task CreateBackup()
+    {
+        _loading = true;
+        try
+        {
+            var path = await BackupService.CreateBackupAsync();
+            Snackbar.Add($"پشتیبان با موفقیت ایجاد شد", Severity.Success);
+            await LoadBackups();
+        }
+        catch (Exception ex) { Snackbar.Add($"خطا: {ex.Message}", Severity.Error); }
+        finally { _loading = false; }
+    }
+
+    private async Task OptimizeDb()
+    {
+        _loading = true;
+        try
+        {
+            await BackupService.OptimizeDatabaseAsync();
+            Snackbar.Add("پایگاه داده بهینه‌سازی شد", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add($"خطا: {ex.Message}", Severity.Error); }
+        finally { _loading = false; }
+    }
+
+    private async Task RestoreBackup(BackupInfo backup)
+    {
+        var confirm = await DialogService.ShowMessageBox("بازیابی پشتیبان",
+            "اطلاعات فعلی با فایل پشتیبان جایگزین می‌شود. آیا مطمئن هستید؟",
+            yesText: "بله، بازیابی شود", cancelText: "خیر");
+        if (confirm == true)
+        {
+            _loading = true;
+            try
+            {
+                var result = await BackupService.RestoreBackupAsync(backup.FilePath);
+                if (result.IsSuccess) Snackbar.Add("بازیابی انجام شد", Severity.Success);
+                else Snackbar.Add(result.Error ?? "خطا", Severity.Error);
+            }
+            finally { _loading = false; }
+        }
+    }
+}

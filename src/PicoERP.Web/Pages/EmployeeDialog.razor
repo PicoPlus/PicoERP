@@ -1,0 +1,155 @@
+@inject IEmployeeService EmployeeService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@(Employee == null ? Icons.Material.Filled.PersonAdd : Icons.Material.Filled.Edit)" Class="ml-2" />
+            @(Employee == null ? "افزودن کارمند جدید" : "ویرایش اطلاعات کارمند")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2" dir="rtl">
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_dto.FirstName" Label="نام *" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_dto.LastName" Label="نام خانوادگی *" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_dto.NationalId" Label="کد ملی *" Variant="Variant.Outlined" Required="true" MaxLength="10" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_dto.PhoneNumber" Label="شماره تماس *" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_dto.Position" Label="سمت *" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+
+            <!-- Salary Type -->
+            <MudItem xs="12">
+                <MudText Typo="Typo.caption" Class="mb-1" Style="color:#57606a;">نوع حقوق</MudText>
+                <MudRadioGroup @bind-Value="_dto.SalaryType" T="SalaryType">
+                    <MudRadio Value="@SalaryType.Fixed" Color="Color.Primary">حقوق ثابت</MudRadio>
+                    <MudRadio Value="@SalaryType.PercentageOfRevenue" Color="Color.Secondary">درصد از درآمد</MudRadio>
+                </MudRadioGroup>
+            </MudItem>
+
+            @if (_dto.SalaryType == SalaryType.Fixed)
+            {
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="_dto.BaseSalary" Label="حقوق پایه (تومان)" Variant="Variant.Outlined" Min="0" />
+                </MudItem>
+            }
+            else
+            {
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="_dto.SalaryPercentage" Label="درصد از درآمد (مثلاً ۱۰)" Variant="Variant.Outlined"
+                                    Min="0" Max="100" Adornment="Adornment.End" AdornmentText="%" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudPaper Elevation="0" Class="pa-2" Style="background:#EDE7F6; border-radius:8px; border:1px solid #CE93D8;">
+                        <MudText Typo="Typo.caption" Style="color:#6A1B9A;">
+                            حقوق پایه هنگام ثبت فیش، بر اساس درآمد دوره محاسبه می‌شود.
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+            }
+            <MudItem xs="12" sm="6">
+                <MudDatePicker @bind-Date="_hireDate" Label="تاریخ استخدام *" Variant="Variant.Outlined" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                @if (Employee != null)
+                {
+                    <MudSelect @bind-Value="_updateDto.Status" Label="وضعیت" Variant="Variant.Outlined">
+                        <MudSelectItem Value="@EmployeeStatus.Active">فعال</MudSelectItem>
+                        <MudSelectItem Value="@EmployeeStatus.Inactive">غیرفعال</MudSelectItem>
+                        <MudSelectItem Value="@EmployeeStatus.OnLeave">در مرخصی</MudSelectItem>
+                        <MudSelectItem Value="@EmployeeStatus.Terminated">خاتمه یافته</MudSelectItem>
+                    </MudSelect>
+                }
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_dto.Address" Label="آدرس" Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudCheckBox @bind-Value="_dto.HasInsurance" Label="بیمه تامین اجتماعی" Color="Color.Primary" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_dto.Notes" Label="توضیحات" Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Outlined">انصراف</MudButton>
+        <MudButton OnClick="Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@_loading">
+            @if (_loading) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="ml-1" /> }
+            ذخیره
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public EmployeeDto? Employee { get; set; }
+
+    private CreateEmployeeDto _dto = new();
+    private UpdateEmployeeDto _updateDto = new();
+    private DateTime? _hireDate = DateTime.Today;
+    private bool _loading;
+
+    protected override void OnInitialized()
+    {
+        if (Employee != null)
+        {
+            _dto = new CreateEmployeeDto
+            {
+                FirstName = Employee.FirstName, LastName = Employee.LastName,
+                NationalId = Employee.NationalId, PhoneNumber = Employee.PhoneNumber,
+                Address = Employee.Address, HireDate = Employee.HireDate,
+                Position = Employee.Position, SalaryType = Employee.SalaryType,
+                BaseSalary = Employee.BaseSalary, SalaryPercentage = Employee.SalaryPercentage,
+                HasInsurance = Employee.HasInsurance, Notes = Employee.Notes
+            };
+            _updateDto = new UpdateEmployeeDto { Status = Employee.Status };
+            _hireDate = Employee.HireDate;
+        }
+    }
+
+    private async Task Submit()
+    {
+        if (string.IsNullOrWhiteSpace(_dto.FirstName) || string.IsNullOrWhiteSpace(_dto.LastName) || string.IsNullOrWhiteSpace(_dto.NationalId))
+        {
+            Snackbar.Add("لطفاً فیلدهای ستاره‌دار را پر کنید", Severity.Warning);
+            return;
+        }
+        _dto.HireDate = _hireDate ?? DateTime.Today;
+        _loading = true;
+        try
+        {
+            if (Employee == null)
+            {
+                var result = await EmployeeService.CreateAsync(_dto);
+                if (result.IsSuccess) { Snackbar.Add("کارمند اضافه شد", Severity.Success); MudDialog.Close(DialogResult.Ok(true)); }
+                else Snackbar.Add(result.Error ?? "خطا", Severity.Error);
+            }
+            else
+            {
+                var update = new UpdateEmployeeDto
+                {
+                    Id = Employee.Id, FirstName = _dto.FirstName, LastName = _dto.LastName,
+                    NationalId = _dto.NationalId, PhoneNumber = _dto.PhoneNumber,
+                    Address = _dto.Address, HireDate = _dto.HireDate, Position = _dto.Position,
+                    BaseSalary = _dto.BaseSalary, HasInsurance = _dto.HasInsurance,
+                    Notes = _dto.Notes, Status = _updateDto.Status
+                };
+                var result = await EmployeeService.UpdateAsync(update);
+                if (result.IsSuccess) { Snackbar.Add("به‌روزرسانی شد", Severity.Success); MudDialog.Close(DialogResult.Ok(true)); }
+                else Snackbar.Add(result.Error ?? "خطا", Severity.Error);
+            }
+        }
+        finally { _loading = false; }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

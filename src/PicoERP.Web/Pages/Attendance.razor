@@ -1,0 +1,149 @@
+@page "/attendance"
+@inject IEmployeeService EmployeeService
+@inject AppStateService AppState
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>حضور و غیاب — پیکو ERP</PageTitle>
+
+<div class="pico-page" dir="rtl">
+    <div class="page-header">
+        <div>
+            <MudText Typo="Typo.h4" Class="page-title">حضور و غیاب</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">ثبت و پیگیری حضور پرسنل</MudText>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <MudCard Elevation="1" Class="pico-card mb-4">
+        <MudCardContent>
+            <MudGrid Spacing="2" AlignItems="Center">
+                <MudItem xs="12" md="4">
+                    <MudSelect @bind-Value="_selectedEmployeeId" Label="کارمند" Variant="Variant.Outlined"
+                               Margin="Margin.Dense" T="int?" Clearable="true">
+                        @foreach (var emp in _employees)
+                        {
+                            <MudSelectItem Value="@((int?)emp.Id)">@emp.FullName</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudDatePicker @bind-Date="_fromDate" Label="از تاریخ" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudDatePicker @bind-Date="_toDate" Label="تا تاریخ" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" md="4" Class="d-flex gap-2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadAttendance">نمایش</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.Add"
+                               OnClick="@(() => OpenRecordDialog(null))">ثبت حضور</MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudCardContent>
+    </MudCard>
+
+    <!-- Attendance Table -->
+    <MudCard Elevation="2" Class="pico-card">
+        <MudCardContent Class="pa-0">
+            @if (_loading)
+            {
+                @for (int i = 0; i < 5; i++) { <MudSkeleton Height="48px" /> }
+            }
+            else if (_records.Any())
+            {
+                <MudTable Items="_records" Dense="true" Hover="true" Striped="true" FixedHeader="true" Height="500px">
+                    <HeaderContent>
+                        <MudTh>کارمند</MudTh>
+                        <MudTh>تاریخ</MudTh>
+                        <MudTh>ورود</MudTh>
+                        <MudTh>خروج</MudTh>
+                        <MudTh>نوع</MudTh>
+                        <MudTh>اضافه کاری</MudTh>
+                        <MudTh>توضیح</MudTh>
+                        <MudTh>عملیات</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.EmployeeName</MudTd>
+                        <MudTd dir="ltr">@AppState.FormatDate(context.Date)</MudTd>
+                        <MudTd>@(context.CheckIn.HasValue ? context.CheckIn.Value.ToString(@"hh\:mm") : "-")</MudTd>
+                        <MudTd>@(context.CheckOut.HasValue ? context.CheckOut.Value.ToString(@"hh\:mm") : "-")</MudTd>
+                        <MudTd>
+                            <MudChip T="string" Size="Size.Small" Color="@GetAttTypeColor(context.Type)" Variant="Variant.Filled">
+                                @GetAttTypePersian(context.Type)
+                            </MudChip>
+                        </MudTd>
+                        <MudTd>@(context.OvertimeHours > 0 ? $"{context.OvertimeHours} ساعت" : "-")</MudTd>
+                        <MudTd>@(context.Notes ?? "-")</MudTd>
+                        <MudTd>
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" OnClick="@(() => OpenRecordDialog(context))" />
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+            else
+            {
+                <div class="empty-state">
+                    <MudIcon Icon="@Icons.Material.Filled.HowToReg" Style="font-size:64px;" />
+                    <h3>رکوردی یافت نشد</h3>
+                    <p>یک کارمند و بازه زمانی انتخاب کنید</p>
+                </div>
+            }
+        </MudCardContent>
+    </MudCard>
+</div>
+
+@code {
+    [Parameter, SupplyParameterFromQuery] public int? employeeId { get; set; }
+
+    private List<EmployeeDto> _employees = new();
+    private List<AttendanceDto> _records = new();
+    private int? _selectedEmployeeId;
+    private DateTime? _fromDate = DateTime.Today.AddDays(-7);
+    private DateTime? _toDate = DateTime.Today;
+    private bool _loading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _employees = await EmployeeService.GetAllActiveAsync();
+        if (employeeId.HasValue) _selectedEmployeeId = employeeId;
+        await LoadAttendance();
+    }
+
+    private async Task LoadAttendance()
+    {
+        if (!_selectedEmployeeId.HasValue) { _records.Clear(); return; }
+        _loading = true;
+        StateHasChanged();
+        _records = await EmployeeService.GetAttendanceAsync(
+            _selectedEmployeeId.Value,
+            _fromDate ?? DateTime.Today.AddDays(-30),
+            _toDate ?? DateTime.Today);
+        _loading = false;
+    }
+
+    private async Task OpenRecordDialog(AttendanceDto? record)
+    {
+        var empId = record?.EmployeeId ?? _selectedEmployeeId;
+        if (!empId.HasValue) { Snackbar.Add("ابتدا یک کارمند انتخاب کنید", Severity.Warning); return; }
+
+        var dto = record ?? new AttendanceDto { EmployeeId = empId.Value, Date = DateTime.Today, Type = AttendanceType.Present };
+        var parameters = new DialogParameters { ["Record"] = dto, ["Employees"] = _employees };
+        var dialog = await DialogService.ShowAsync<AttendanceDialog>(record == null ? "ثبت حضور" : "ویرایش حضور",
+            parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (!result.Canceled) await LoadAttendance();
+    }
+
+    private static Color GetAttTypeColor(AttendanceType t) => t switch
+    {
+        AttendanceType.Present => Color.Success, AttendanceType.Absent => Color.Error,
+        AttendanceType.Leave => Color.Warning, AttendanceType.Late => Color.Warning,
+        AttendanceType.Overtime => Color.Info, _ => Color.Default
+    };
+    private static string GetAttTypePersian(AttendanceType t) => t switch
+    {
+        AttendanceType.Present => "حاضر", AttendanceType.Absent => "غایب",
+        AttendanceType.Leave => "مرخصی", AttendanceType.Late => "تاخیر",
+        AttendanceType.Overtime => "اضافه‌کاری", _ => ""
+    };
+}

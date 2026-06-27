@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  picoerp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: picoerp-app
+    ports:
+      - "5000:8080"
+    volumes:
+      - picoerp_data:/app/Data
+      - picoerp_backups:/app/Backups
+      - picoerp_logs:/app/logs
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__DefaultConnection=Data Source=/app/Data/picoerp.db
+      - Jwt__Key=PicoERP-Production-Secret-Key-Change-This!!
+      - Jwt__Issuer=PicoERP
+      - Jwt__Audience=PicoERP
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  picoerp_data:
+  picoerp_backups:
+  picoerp_logs:

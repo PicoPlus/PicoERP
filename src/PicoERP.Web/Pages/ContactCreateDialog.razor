@@ -1,0 +1,159 @@
+@using PicoERP.Application.DTOs
+@using PicoERP.Application.Interfaces
+@inject IHubSpotService HubSpotService
+@inject MudBlazor.ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <div style="display:flex;align-items:center;gap:10px;">
+            <MudIcon Icon="@Icons.Material.Filled.PersonAdd" Style="color:#FF7A59;" />
+            <MudText Typo="Typo.h6">افزودن مخاطب جدید</MudText>
+        </div>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" dir="rtl">
+            <MudGrid Spacing="3">
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_model.FirstName"
+                                  Label="نام *"
+                                  Variant="Variant.Outlined"
+                                  Required="true"
+                                  RequiredError="نام الزامی است" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_model.LastName"
+                                  Label="نام خانوادگی *"
+                                  Variant="Variant.Outlined"
+                                  Required="true"
+                                  RequiredError="نام خانوادگی الزامی است" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_model.NCode"
+                                  Label="کد ملی"
+                                  Variant="Variant.Outlined"
+                                  Placeholder="مثال: ۱۲۳۴۵۶۷۸۹۰"
+                                  Error="@(!string.IsNullOrEmpty(_ncodeError))"
+                                  ErrorText="@_ncodeError" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_model.MobilePhone"
+                                  Label="تلفن همراه"
+                                  Variant="Variant.Outlined"
+                                  Placeholder="مثال: ۰۹۱۲۱۲۳۴۵۶۷"
+                                  Error="@(!string.IsNullOrEmpty(_mobileError))"
+                                  ErrorText="@_mobileError" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_model.FatherName"
+                                  Label="نام پدر"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_model.BirthDate"
+                                  Label="تاریخ تولد"
+                                  Variant="Variant.Outlined"
+                                  Placeholder="مثال: ۱۳۷۰/۰۱/۰۱" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_model.Email"
+                                  Label="ایمیل"
+                                  Variant="Variant.Outlined"
+                                  InputType="InputType.Email" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_model.Company"
+                                  Label="شرکت"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+            </MudGrid>
+
+            @if (!string.IsNullOrEmpty(_generalError))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3" Dense="true">@_generalError</MudAlert>
+            }
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text">انصراف</MudButton>
+        <MudButton OnClick="Submit" Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Save"
+                   Disabled="@_saving">
+            @(_saving ? "در حال ذخیره..." : "ذخیره مخاطب")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public string ApiKey { get; set; } = string.Empty;
+
+    private MudForm _form = null!;
+    private CreateHubSpotContactDto _model = new();
+    private bool _saving;
+    private string _ncodeError = "";
+    private string _mobileError = "";
+    private string _generalError = "";
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task Submit()
+    {
+        await _form.Validate();
+        if (!_form.IsValid) return;
+
+        _ncodeError   = "";
+        _mobileError  = "";
+        _generalError = "";
+        _saving       = true;
+
+        try
+        {
+            // Uniqueness checks
+            if (!string.IsNullOrWhiteSpace(_model.NCode))
+            {
+                var existId = await HubSpotService.FindContactByNcodeAsync(ApiKey, _model.NCode);
+                if (existId != null)
+                {
+                    _ncodeError = "این کد ملی قبلاً در هاب‌اسپات ثبت شده است.";
+                    return;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(_model.MobilePhone))
+            {
+                var existId = await HubSpotService.FindContactByMobileAsync(ApiKey, _model.MobilePhone);
+                if (existId != null)
+                {
+                    _mobileError = "این شماره موبایل قبلاً در هاب‌اسپات ثبت شده است.";
+                    return;
+                }
+            }
+
+            // Create in HubSpot
+            var created = await HubSpotService.CreateContactAsync(ApiKey, _model);
+
+            // Also save locally
+            await HubSpotService.SaveContactLocallyAsync(new HubSpotContactDto
+            {
+                Id          = created.Id,
+                FirstName   = _model.FirstName,
+                LastName    = _model.LastName,
+                Email       = _model.Email,
+                Phone       = _model.MobilePhone,
+                Company     = _model.Company,
+                NCode       = _model.NCode,
+                BirthDate   = _model.BirthDate,
+                FatherName  = _model.FatherName,
+                MobilePhone = _model.MobilePhone,
+                CreateDate  = DateTime.UtcNow
+            });
+
+            MudDialog.Close(DialogResult.Ok(created));
+        }
+        catch (Exception ex)
+        {
+            _generalError = $"خطا در ایجاد مخاطب: {ex.Message}";
+        }
+        finally { _saving = false; }
+    }
+}
