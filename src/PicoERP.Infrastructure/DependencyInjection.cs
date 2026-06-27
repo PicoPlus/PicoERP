@@ -60,8 +60,8 @@ public static class DependencyInjection
         await db.Database.ExecuteSqlRawAsync(@"
             INSERT OR IGNORE INTO ""AppSettings"" (""Key"", ""Value"", ""Description"", ""Group"", ""CreatedAt"", ""IsDeleted"")
             VALUES ('HubSpot:ApiKey', '', 'کلید API هاب‌اسپات (Private App Token)', 'CRM', '2024-01-01T00:00:00.0000000Z', 0);
-            INSERT OR IGNORE INTO ""AppSettings"" (""Key"", ""Value"", ""Description"", ""Group"", ""CreatedAt"", ""IsDeleted"")
-            VALUES ('Zohal:Token', '', 'توکن Bearer سرویس زهل (استعلام هویت)', 'Identity', '2024-01-01T00:00:00.0000000Z', 0);
+            INSERT OR REPLACE INTO ""AppSettings"" (""Key"", ""Value"", ""Description"", ""Group"", ""CreatedAt"", ""IsDeleted"")
+            VALUES ('Zohal:Token', 'ee9f80f6e7c3a53f5ff76bfd7011f1002c47c807', 'توکن Bearer سرویس زهل (استعلام هویت)', 'Identity', '2024-01-01T00:00:00.0000000Z', 0);
         ");
 
         // Add new CRM contact columns for existing databases.
