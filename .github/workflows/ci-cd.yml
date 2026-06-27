@@ -50,17 +50,34 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore src/PicoERP.Web/PicoERP.Web.csproj
 
-      - name: Publish (self-contained, win-x64)
+      - name: Publish (framework-dependent, win-x64)
         run: |
           dotnet publish src/PicoERP.Web/PicoERP.Web.csproj \
             -c Release \
             -r win-x64 \
-            --self-contained true \
+            --self-contained false \
             -o ./publish_output \
             /p:UseAppHost=true
 
-      # Upload every file in publish_output/ to the Plesk FTP root.
-      # Secrets are set in: GitHub repo → Settings → Secrets → Actions
+      # ── Step: place "under construction" page on the server BEFORE wiping ──
+      # This uploads a single maintenance HTML so visitors see it while the old
+      # site is being removed and the new build is uploading.
+      - name: Upload under-construction page
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server:        ${{ secrets.FTP_HOST }}
+          username:      ${{ secrets.FTP_USER }}
+          password:      ${{ secrets.FTP_PASSWORD }}
+          local-dir:     ./maintenance/
+          server-dir:    /publish/
+          dangerous-clean-slate: true
+          exclude: |
+            **/.git*
+            **/.git*/**
+
+      # ── Step: deploy the real build (replaces the maintenance page) ─────────
+      # dangerous-clean-slate removes everything on the server first, then
+      # uploads the full publish_output so no stale files remain.
       - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
@@ -68,8 +85,8 @@ jobs:
           username:      ${{ secrets.FTP_USER }}
           password:      ${{ secrets.FTP_PASSWORD }}
           local-dir:     ./publish_output/
-          server-dir:    /
-          dangerous-clean-slate: false
+          server-dir:    /publish/
+          dangerous-clean-slate: true
           exclude: |
             **/.git*
             **/.git*/**
