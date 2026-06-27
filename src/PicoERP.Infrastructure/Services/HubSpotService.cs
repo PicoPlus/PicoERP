@@ -872,13 +872,19 @@ public class HubSpotService : IHubSpotService
             var raw = await itemResp.Content.ReadFromJsonAsync<HubSpotRawContact>(_json);
             if (raw?.Properties == null) continue;
             var p = raw.Properties;
+            var qty   = decimal.TryParse(p.GetValueOrDefault("quantity"), out var q) ? q : 1m;
+            var price = decimal.TryParse(p.GetValueOrDefault("price"),    out var u) ? u : 0m;
+            var amt   = decimal.TryParse(p.GetValueOrDefault("amount"),   out var a) ? a : 0m;
+            // HubSpot sometimes omits or zeroes the amount field — fall back to qty × price
+            if (amt == 0m && price > 0m) amt = Math.Round(qty * price, 2);
+
             items.Add(new HubSpotLineItemDto
             {
                 Id          = raw.Id ?? "",
                 Name        = p.GetValueOrDefault("name"),
-                Quantity    = decimal.TryParse(p.GetValueOrDefault("quantity"),  out var q) ? q : 1,
-                UnitPrice   = decimal.TryParse(p.GetValueOrDefault("price"),     out var u) ? u : 0,
-                Amount      = decimal.TryParse(p.GetValueOrDefault("amount"),    out var a) ? a : 0,
+                Quantity    = qty,
+                UnitPrice   = price,
+                Amount      = amt,
                 Sku         = p.GetValueOrDefault("hs_sku"),
                 Description = p.GetValueOrDefault("description")
             });
