@@ -4,6 +4,8 @@
 @inject IHubSpotService HubSpotService
 @inject ISmsService SmsService
 @inject ISettingsService SettingsService
+@using PicoERP.Application.Interfaces
+@inject IZohalService ZohalService
 
 <PageTitle>تنظیمات — پیکو ERP</PageTitle>
 
@@ -127,6 +129,50 @@
             </MudCard>
         </MudItem>
 
+        <!-- Zohal Identity Inquiry -->
+        <MudItem xs="12">
+            <MudCard Elevation="2" Class="pico-card">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">
+                            <MudIcon Icon="@Icons.Material.Filled.VerifiedUser" Class="ml-2" />
+                            سرویس استعلام هویت (زهل)
+                        </MudText>
+                    </CardHeaderContent>
+                    <CardHeaderActions>
+                        @if (_zohalOk.HasValue)
+                        {
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
+                                     Color="@(_zohalOk.Value ? Color.Success : Color.Error)">
+                                @(_zohalOk.Value ? "متصل" : "خطا")
+                            </MudChip>
+                        }
+                    </CardHeaderActions>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudGrid Spacing="2">
+                        <MudItem xs="12">
+                            <MudTextField @bind-Value="_zohalToken"
+                                          Label="توکن Bearer سرویس زهل"
+                                          Variant="Variant.Outlined"
+                                          InputType="InputType.Password"
+                                          Adornment="Adornment.End"
+                                          AdornmentIcon="@Icons.Material.Filled.VpnKey"
+                                          Placeholder="YOUR_SECRET_TOKEN"
+                                          HelperText="از پنل service.zohal.io دریافت کنید" />
+                        </MudItem>
+                    </MudGrid>
+                </MudCardContent>
+                <MudCardActions>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Save"
+                               OnClick="SaveZohalToken" Disabled="@_savingZohal">
+                        @(_savingZohal ? "در حال ذخیره..." : "ذخیره توکن")
+                    </MudButton>
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+
         <!-- SMS Settings -->
         <MudItem xs="12">
             <MudCard Elevation="2" Class="pico-card">
@@ -233,6 +279,10 @@
     private bool _testingHub;
     private bool _savingHub;
 
+    private string _zohalToken  = "";
+    private bool?  _zohalOk;
+    private bool   _savingZohal;
+
     private string _smsApiKey = "";
     private string _smsAdminPhone = "";
     private string _smsSender = "";
@@ -246,12 +296,15 @@
         // Load HubSpot key from DB (persists across restarts)
         _hubspotKey    = await HubSpotService.GetApiKeyAsync() ?? "";
 
+        _zohalToken    = await SettingsService.GetAsync("Zohal:Token")    ?? "";
+
         _smsApiKey     = await SettingsService.GetAsync("Sms:ApiKey")     ?? "";
         _smsAdminPhone = await SettingsService.GetAsync("Sms:AdminPhone") ?? "";
         _smsSender     = await SettingsService.GetAsync("Sms:Sender")     ?? "";
 
         // Populate AppState so other pages can read without their own DB call
         AppState.HubSpotApiKey = _hubspotKey;
+        AppState.ZohalToken    = _zohalToken;
         AppState.SmsApiKey     = _smsApiKey;
         AppState.SmsAdminPhone = _smsAdminPhone;
         AppState.SmsSender     = _smsSender;
@@ -299,6 +352,15 @@
         AppState.HubSpotApiKey = _hubspotKey;
         _savingHub = false;
         Snackbar.Add("کلید API هاب‌اسپات ذخیره شد", Severity.Success);
+    }
+
+    private async Task SaveZohalToken()
+    {
+        _savingZohal = true;
+        await SettingsService.SetAsync("Zohal:Token", _zohalToken);
+        AppState.ZohalToken = _zohalToken;
+        _savingZohal = false;
+        Snackbar.Add("توکن زهل ذخیره شد", Severity.Success);
     }
 
     private async Task SaveSmsSettings()

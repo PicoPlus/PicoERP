@@ -1,6 +1,7 @@
 @using PicoERP.Application.DTOs
 @using PicoERP.Application.Interfaces
 @inject IHubSpotService HubSpotService
+@inject IZohalService ZohalService
 @inject MudBlazor.ISnackbar Snackbar
 
 <MudDialog>
@@ -28,12 +29,24 @@
                                   RequiredError="نام خانوادگی الزامی است" />
                 </MudItem>
                 <MudItem xs="12" sm="6">
-                    <MudTextField @bind-Value="_model.NCode"
-                                  Label="کد ملی"
-                                  Variant="Variant.Outlined"
-                                  Placeholder="مثال: ۱۲۳۴۵۶۷۸۹۰"
-                                  Error="@(!string.IsNullOrEmpty(_ncodeError))"
-                                  ErrorText="@_ncodeError" />
+                    <div style="display:flex;gap:6px;align-items:flex-start;">
+                        <MudTextField @bind-Value="_model.NCode"
+                                      Label="کد ملی"
+                                      Variant="Variant.Outlined"
+                                      Placeholder="مثال: ۱۲۳۴۵۶۷۸۹۰"
+                                      Error="@(!string.IsNullOrEmpty(_ncodeError))"
+                                      ErrorText="@_ncodeError"
+                                      Style="flex:1;" />
+                        <MudTooltip Text="استعلام هویت از ثبت‌احوال (زهل)">
+                            <MudIconButton Icon="@Icons.Material.Filled.ManageSearch"
+                                           Color="Color.Info"
+                                           Variant="Variant.Outlined"
+                                           Size="Size.Medium"
+                                           Style="margin-top:4px;flex-shrink:0;"
+                                           Disabled="@(string.IsNullOrWhiteSpace(_model.NCode) || string.IsNullOrWhiteSpace(_model.BirthDate) || _inquiring)"
+                                           OnClick="RunInquiry" />
+                        </MudTooltip>
+                    </div>
                 </MudItem>
                 <MudItem xs="12" sm="6">
                     <MudTextField @bind-Value="_model.MobilePhone"
@@ -67,6 +80,36 @@
                 </MudItem>
             </MudGrid>
 
+            @if (_inquiring)
+            {
+                <MudProgressLinear Color="Color.Info" Indeterminate="true" Class="mt-3" />
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">در حال استعلام از سامانه ثبت‌احوال...</MudText>
+            }
+
+            @if (_inquiryResult != null)
+            {
+                <MudAlert Severity="@(_inquiryResult.Matched == true ? Severity.Success : Severity.Warning)"
+                          Class="mt-3" Dense="false" Icon="@(_inquiryResult.Matched == true ? Icons.Material.Filled.VerifiedUser : Icons.Material.Filled.GppBad)">
+                    @if (!string.IsNullOrEmpty(_inquiryResult.Error))
+                    {
+                        <span>@_inquiryResult.Error</span>
+                    }
+                    else if (_inquiryResult.Matched == true)
+                    {
+                        <div style="display:flex;flex-direction:column;gap:2px;">
+                            <strong>هویت تأیید شد ✓</strong>
+                            <span>نام: @_inquiryResult.FirstName @_inquiryResult.LastName</span>
+                            <span>نام پدر: @_inquiryResult.FatherName</span>
+                            <span>وضعیت حیات: @(_inquiryResult.IsDead == true ? "فوت‌شده ✗" : "زنده ✓")</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <span>کد ملی و تاریخ تولد مطابقت ندارند</span>
+                    }
+                </MudAlert>
+            }
+
             @if (!string.IsNullOrEmpty(_generalError))
             {
                 <MudAlert Severity="Severity.Error" Class="mt-3" Dense="true">@_generalError</MudAlert>
@@ -90,9 +133,38 @@
     private MudForm _form = null!;
     private CreateHubSpotContactDto _model = new();
     private bool _saving;
-    private string _ncodeError = "";
-    private string _mobileError = "";
-    private string _generalError = "";
+    private string _ncodeError    = "";
+    private string _mobileError   = "";
+    private string _generalError  = "";
+    private bool   _inquiring;
+    private ZohalIdentityResultDto? _inquiryResult;
+
+    // ── Zohal identity inquiry ───────────────────────────────────────────────
+
+    private async Task RunInquiry()
+    {
+        if (string.IsNullOrWhiteSpace(_model.NCode) || string.IsNullOrWhiteSpace(_model.BirthDate))
+            return;
+
+        _inquiring     = true;
+        _inquiryResult = null;
+        StateHasChanged();
+
+        _inquiryResult = await ZohalService.InquireAsync(_model.NCode.Trim(), _model.BirthDate.Trim());
+
+        // If matched, auto-fill name fields (only when they are currently empty)
+        if (_inquiryResult.Matched == true)
+        {
+            if (string.IsNullOrWhiteSpace(_model.FirstName)  && !string.IsNullOrWhiteSpace(_inquiryResult.FirstName))
+                _model.FirstName  = _inquiryResult.FirstName;
+            if (string.IsNullOrWhiteSpace(_model.LastName)   && !string.IsNullOrWhiteSpace(_inquiryResult.LastName))
+                _model.LastName   = _inquiryResult.LastName;
+            if (string.IsNullOrWhiteSpace(_model.FatherName) && !string.IsNullOrWhiteSpace(_inquiryResult.FatherName))
+                _model.FatherName = _inquiryResult.FatherName;
+        }
+
+        _inquiring = false;
+    }
 
     private void Cancel() => MudDialog.Cancel();
 

@@ -30,6 +30,7 @@ public static class DependencyInjection
         services.AddScoped<ISmsService, SmsService>();
         services.AddScoped<ISmsLogService, SmsLogService>();
         services.AddScoped<ISettingsService, SettingsService>();
+        services.AddScoped<IZohalService, ZohalService>();
         services.AddScoped<IBankTransferService, BankTransferService>();
         services.AddScoped<IDailyClosingService, DailyClosingService>();
         // Bank statement import — register each parser as IBankStatementParser,
@@ -39,6 +40,7 @@ public static class DependencyInjection
         services.AddSingleton<IPushNotificationService, PushNotificationService>();
         services.AddHttpClient("hubspot");
         services.AddHttpClient("ippanel");
+        services.AddHttpClient("zohal");
 
         return services;
     }
@@ -58,6 +60,8 @@ public static class DependencyInjection
         await db.Database.ExecuteSqlRawAsync(@"
             INSERT OR IGNORE INTO ""AppSettings"" (""Key"", ""Value"", ""Description"", ""Group"", ""CreatedAt"", ""IsDeleted"")
             VALUES ('HubSpot:ApiKey', '', 'کلید API هاب‌اسپات (Private App Token)', 'CRM', '2024-01-01T00:00:00.0000000Z', 0);
+            INSERT OR IGNORE INTO ""AppSettings"" (""Key"", ""Value"", ""Description"", ""Group"", ""CreatedAt"", ""IsDeleted"")
+            VALUES ('Zohal:Token', '', 'توکن Bearer سرویس زهل (استعلام هویت)', 'Identity', '2024-01-01T00:00:00.0000000Z', 0);
         ");
 
         // Add new CRM contact columns for existing databases.

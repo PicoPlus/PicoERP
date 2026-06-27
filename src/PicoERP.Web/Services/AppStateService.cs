@@ -17,6 +17,7 @@ public class AppStateService
     public bool IsRial => true;
     public string BusinessName { get; set; } = "کافه نت پیکو";
     public string HubSpotApiKey { get; set; } = "";
+    public string ZohalToken    { get; set; } = "";
     public string SmsApiKey { get; set; } = "";
     public string SmsAdminPhone { get; set; } = "";
     public string SmsSender { get; set; } = "+98200010000";
