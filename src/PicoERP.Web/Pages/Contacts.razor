@@ -11,35 +11,52 @@
 
 <PageTitle>مخاطبین CRM — پیکو ERP</PageTitle>
 
+<style>
+    .contacts-hero       { background:linear-gradient(135deg,#FF7A59 0%,#FF9E7D 100%); border-radius:16px; padding:28px 32px; color:#fff; margin-bottom:24px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; }
+    .contacts-hero-title { font-size:1.6rem; font-weight:800; margin:0; }
+    .contacts-hero-sub   { font-size:.875rem; opacity:.85; margin:4px 0 0; }
+    .cnt-kpi-row         { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; margin-bottom:22px; }
+    .cnt-kpi-card        { background:var(--mud-palette-surface); border:1px solid var(--mud-palette-divider); border-radius:12px; padding:16px 18px; display:flex; align-items:center; gap:14px; }
+    .cnt-kpi-icon        { width:42px; height:42px; border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .cnt-kpi-val         { font-size:1.25rem; font-weight:800; line-height:1.2; }
+    .cnt-kpi-lbl         { font-size:.75rem; color:#6b7280; margin-top:2px; }
+    .cnt-filter-bar      { background:var(--mud-palette-surface); border:1px solid var(--mud-palette-divider); border-radius:12px; padding:16px 20px; margin-bottom:18px; }
+    .cnt-grid            { display:grid; grid-template-columns:repeat(auto-fill,minmax(290px,1fr)); gap:14px; }
+    .cnt-card            { border:1px solid var(--mud-palette-divider); border-radius:14px; padding:18px 16px; cursor:pointer; transition:box-shadow .15s,border-color .15s; background:var(--mud-palette-surface); display:flex; flex-direction:column; gap:10px; }
+    .cnt-card:hover      { box-shadow:0 4px 20px rgba(255,122,89,.15); border-color:#FF7A59; }
+    .cnt-avatar          { width:46px; height:46px; border-radius:50%; background:linear-gradient(135deg,#FF7A59,#FF9E7D); color:#fff; font-size:1.1rem; font-weight:800; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .cnt-name            { font-size:.95rem; font-weight:700; }
+    .cnt-sub             { font-size:.75rem; color:#6b7280; }
+    .cnt-chip            { display:inline-flex; align-items:center; gap:3px; padding:2px 8px; border-radius:20px; font-size:.7rem; font-weight:600; background:#fff7f5; color:#c2410c; border:1px solid #fdddd3; }
+    .cnt-row-info        { display:flex; align-items:center; gap:6px; font-size:.78rem; color:#374151; }
+    .empty-hero          { text-align:center; padding:60px 20px; color:#9ca3af; }
+</style>
+
 <div class="pico-page" dir="rtl">
-    <div class="page-header">
+
+    <!-- Hero -->
+    <div class="contacts-hero">
         <div>
-            <MudText Typo="Typo.h4" Class="page-title">مخاطبین CRM</MudText>
-            <MudText Typo="Typo.caption" Color="Color.Secondary">
-                مدیریت مخاطبین هاب‌اسپات — ایجاد، ویرایش و مشاهده پروفایل
-            </MudText>
+            <p class="contacts-hero-title">👥 مخاطبین CRM</p>
+            <p class="contacts-hero-sub">مدیریت مخاطبین هاب‌اسپات — مشاهده، ایجاد و استعلام هویت</p>
         </div>
-        <div class="header-actions">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
             @if (_syncing)
             {
-                <div style="display:flex;align-items:center;gap:6px;font-size:0.8rem;color:#15803d;">
-                    <MudProgressCircular Indeterminate="true" Color="Color.Success" Size="Size.Small" />
-                    <span>همگام‌سازی با هاب‌اسپات...</span>
+                <div style="display:flex;align-items:center;gap:6px;font-size:.8rem;color:rgba(255,255,255,.9);">
+                    <MudProgressCircular Indeterminate="true" Color="Color.Surface" Size="Size.Small" />
+                    <span>همگام‌سازی...</span>
                 </div>
             }
-            <MudButton Variant="Variant.Outlined"
-                       StartIcon="@Icons.Material.Filled.Refresh"
-                       OnClick="LoadContacts"
-                       Disabled="@(_loading || _syncing)"
-                       Class="no-print ml-2">
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh"
+                       OnClick="LoadContacts" Disabled="@(_loading || _syncing)"
+                       Style="background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.4);">
                 بروزرسانی
             </MudButton>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                       StartIcon="@Icons.Material.Filled.PersonAdd"
-                       OnClick="OpenCreateDialog"
-                       Disabled="@(!_apiConfigured)"
-                       Class="no-print">
-                افزودن مخاطب
+            <MudButton Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.PersonAdd"
+                       OnClick="OpenCreateDialog" Disabled="@(!_apiConfigured)"
+                       Style="background:#fff;color:#FF7A59;font-weight:700;">
+                مخاطب جدید
             </MudButton>
         </div>
     </div>
@@ -52,138 +69,255 @@
         </MudAlert>
     }
 
-    <MudCard Elevation="2" Class="pico-card">
-        <MudCardHeader>
-            <CardHeaderContent>
-                <MudText Typo="Typo.h6">
-                    <MudIcon Icon="@Icons.Material.Filled.People" Style="vertical-align:middle; margin-left:6px;" />
-                    مخاطبین (@_filtered.Count() نفر)
-                </MudText>
-            </CardHeaderContent>
-            <CardHeaderActions>
-                <MudTextField @bind-Value="_search" Placeholder="جستجو (نام، کد ملی، موبایل...)"
+    <!-- KPI row -->
+    <div class="cnt-kpi-row">
+        <div class="cnt-kpi-card">
+            <div class="cnt-kpi-icon" style="background:#fff7f5;">
+                <MudIcon Icon="@Icons.Material.Filled.People" Style="color:#FF7A59;" />
+            </div>
+            <div>
+                <div class="cnt-kpi-val">@_contacts.Count</div>
+                <div class="cnt-kpi-lbl">کل مخاطبین</div>
+            </div>
+        </div>
+        <div class="cnt-kpi-card">
+            <div class="cnt-kpi-icon" style="background:#f0fdf4;">
+                <MudIcon Icon="@Icons.Material.Filled.Badge" Style="color:#16a34a;" />
+            </div>
+            <div>
+                <div class="cnt-kpi-val">@_contacts.Count(c => !string.IsNullOrWhiteSpace(c.NCode))</div>
+                <div class="cnt-kpi-lbl">دارای کد ملی</div>
+            </div>
+        </div>
+        <div class="cnt-kpi-card">
+            <div class="cnt-kpi-icon" style="background:#eff6ff;">
+                <MudIcon Icon="@Icons.Material.Filled.PhoneAndroid" Style="color:#2563eb;" />
+            </div>
+            <div>
+                <div class="cnt-kpi-val">@_contacts.Count(c => !string.IsNullOrWhiteSpace(c.MobilePhone ?? c.Phone))</div>
+                <div class="cnt-kpi-lbl">دارای موبایل</div>
+            </div>
+        </div>
+        <div class="cnt-kpi-card">
+            <div class="cnt-kpi-icon" style="background:#faf5ff;">
+                <MudIcon Icon="@Icons.Material.Filled.Business" Style="color:#7c3aed;" />
+            </div>
+            <div>
+                <div class="cnt-kpi-val">@_contacts.Count(c => !string.IsNullOrWhiteSpace(c.Company))</div>
+                <div class="cnt-kpi-lbl">دارای شرکت</div>
+            </div>
+        </div>
+        <div class="cnt-kpi-card">
+            <div class="cnt-kpi-icon" style="background:#fef9c3;">
+                <MudIcon Icon="@Icons.Material.Filled.CalendarMonth" Style="color:#b45309;" />
+            </div>
+            <div>
+                <div class="cnt-kpi-val">@_contacts.Count(c => c.CreatedAt >= DateTime.Today.AddDays(-30))</div>
+                <div class="cnt-kpi-lbl">۳۰ روز اخیر</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="cnt-filter-bar">
+        <MudGrid Spacing="2" AlignItems="AlignItems.Center">
+            <MudItem xs="12" sm="5">
+                <MudTextField @bind-Value="_search"
+                              Label="جستجو (نام، کد ملی، موبایل، شرکت...)"
                               Variant="Variant.Outlined" Margin="Margin.Dense"
                               Adornment="Adornment.End"
                               AdornmentIcon="@Icons.Material.Filled.Search"
-                              Style="min-width:240px;" Immediate="true"
+                              Immediate="true"
                               TextChanged="@(_ => { _page = 1; StateHasChanged(); })" />
-            </CardHeaderActions>
-        </MudCardHeader>
-        <MudCardContent Class="pa-0">
-            @if (_loading)
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect @bind-Value="_viewMode" Label="نحوه نمایش" Variant="Variant.Outlined" Margin="Margin.Dense">
+                    <MudSelectItem Value="@("grid")">کارت‌ها</MudSelectItem>
+                    <MudSelectItem Value="@("table")">جدول</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@_filtered.Count() مخاطب نمایش داده می‌شود</MudText>
+            </MudItem>
+        </MudGrid>
+    </div>
+
+    <!-- Content -->
+    @if (_loading)
+    {
+        <div class="cnt-grid">
+            @for (int i = 0; i < 8; i++)
             {
-                <div class="loading-center">
-                    <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
-                </div>
+                <MudSkeleton Height="140px" Style="border-radius:14px;" />
             }
-            else if (!_filtered.Any())
+        </div>
+    }
+    else if (!_filtered.Any())
+    {
+        <div class="empty-hero">
+            <MudIcon Icon="@Icons.Material.Filled.PersonSearch" Style="font-size:4rem;opacity:.25;" />
+            <MudText Typo="Typo.h6" Style="margin-top:12px;">
+                @(_contacts.Any() ? "مخاطبی با این مشخصات یافت نشد" : "هنوز مخاطبی ثبت نشده")
+            </MudText>
+        </div>
+    }
+    else if (_viewMode == "grid")
+    {
+        <div class="cnt-grid">
+            @foreach (var c in _paged)
             {
-                <div class="empty-state-sm">
-                    <MudIcon Icon="@Icons.Material.Filled.PersonSearch" />
-                    <span>@(_contacts.Any() ? "مخاطبی با این مشخصات یافت نشد" : "هنوز مخاطبی ذخیره نشده — اولین مخاطب را اضافه کنید")</span>
-                </div>
-            }
-            else
-            {
-                <MudTable T="HubSpotContact" Items="_paged" Dense="true" Hover="true" Striped="true"
-                          Breakpoint="Breakpoint.Sm" OnRowClick="@(e => Nav.NavigateTo($"/contact-profile/{e.Item.HsObjectId}"))">
-                    <HeaderContent>
-                        <MudTh>مخاطب</MudTh>
-                        <MudTh>کد ملی</MudTh>
-                        <MudTh>موبایل</MudTh>
-                        <MudTh>ایمیل</MudTh>
-                        <MudTh>شرکت</MudTh>
-                        <MudTh>تاریخ تولد</MudTh>
-                        <MudTh>تاریخ ثبت</MudTh>
-                        <MudTh></MudTh>
-                    </HeaderContent>
-                    <RowTemplate>
-                        <MudTd style="cursor:pointer;">
-                            <div style="display:flex;align-items:center;gap:8px;">
-                                <MudAvatar Size="Size.Small"
-                                           Style="background:#FF7A59;color:#fff;font-size:0.75rem;">
-                                    @((context.FirstName ?? context.HsObjectId ?? "?")
-                                        .Substring(0, 1).ToUpper())
-                                </MudAvatar>
-                                <div>
-                                    <div style="font-weight:600;">
-                                        @($"{context.FirstName} {context.LastName}".Trim())
-                                    </div>
-                                    @if (!string.IsNullOrWhiteSpace(context.FatherName))
-                                    {
-                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                            فرزند: @context.FatherName
-                                        </MudText>
-                                    }
-                                </div>
+                <div class="cnt-card" @onclick="@(() => Nav.NavigateTo($"/contact-profile/{c.HsObjectId}"))">
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <div class="cnt-avatar">
+                            @((c.FirstName ?? c.HsObjectId ?? "?").Substring(0,1).ToUpper())
+                        </div>
+                        <div style="flex:1;min-width:0;">
+                            <div class="cnt-name">@($"{c.FirstName} {c.LastName}".Trim())</div>
+                            @if (!string.IsNullOrWhiteSpace(c.FatherName))
+                            {
+                                <div class="cnt-sub">فرزند @c.FatherName</div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(c.Company))
+                            {
+                                <div class="cnt-sub">🏢 @c.Company</div>
+                            }
+                        </div>
+                    </div>
+
+                    <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                        @if (!string.IsNullOrWhiteSpace(c.NCode))
+                        {
+                            <span class="cnt-chip">🪪 @c.NCode</span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(c.BirthDate))
+                        {
+                            <span class="cnt-chip">🎂 @c.BirthDate</span>
+                        }
+                    </div>
+
+                    <div style="display:flex;flex-direction:column;gap:4px;">
+                        @if (!string.IsNullOrWhiteSpace(c.MobilePhone ?? c.Phone))
+                        {
+                            <div class="cnt-row-info" dir="ltr" style="justify-content:flex-end;">
+                                <MudIcon Icon="@Icons.Material.Filled.PhoneAndroid" Style="font-size:14px;color:#6b7280;" />
+                                @(c.MobilePhone ?? c.Phone)
                             </div>
-                        </MudTd>
-                        <MudTd>@(context.NCode ?? "—")</MudTd>
-                        <MudTd dir="ltr" style="text-align:right !important;">@(context.MobilePhone ?? context.Phone ?? "—")</MudTd>
-                        <MudTd dir="ltr" style="text-align:right !important;">@(context.Email ?? "—")</MudTd>
-                        <MudTd>@(context.Company ?? "—")</MudTd>
-                        <MudTd>@(context.BirthDate ?? "—")</MudTd>
-                        <MudTd>
-                            <MudText Typo="Typo.caption">
-                                @AppState.FormatDate(context.CreatedAt)
-                            </MudText>
-                        </MudTd>
-                        <MudTd>
-                            <MudTooltip Text="مشاهده پروفایل">
-                                <MudIconButton Icon="@Icons.Material.Filled.OpenInNew"
-                                               Size="Size.Small" Color="Color.Primary"
-                                               OnClick="@(() => Nav.NavigateTo($"/contact-profile/{context.HsObjectId}"))" />
+                        }
+                        @if (!string.IsNullOrWhiteSpace(c.Email))
+                        {
+                            <div class="cnt-row-info" dir="ltr" style="justify-content:flex-end;">
+                                <MudIcon Icon="@Icons.Material.Filled.Email" Style="font-size:14px;color:#6b7280;" />
+                                @c.Email
+                            </div>
+                        }
+                    </div>
+
+                    <div style="display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--mud-palette-divider);padding-top:8px;margin-top:2px;">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @AppState.FormatDate(c.CreatedAt)
+                        </MudText>
+                        <div @onclick:stopPropagation="true" style="display:flex;gap:2px;">
+                            <MudTooltip Text="پروفایل">
+                                <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small" Color="Color.Primary"
+                                               OnClick="@(() => Nav.NavigateTo($"/contact-profile/{c.HsObjectId}"))" />
                             </MudTooltip>
                             @if (_apiConfigured)
                             {
                                 <MudTooltip Text="حذف">
-                                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
-                                                   Size="Size.Small" Color="Color.Error"
-                                                   OnClick="@(() => DeleteContact(context))" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                                   OnClick="@(() => DeleteContact(c))" />
                                 </MudTooltip>
                             }
-                        </MudTd>
-                    </RowTemplate>
-                </MudTable>
+                        </div>
+                    </div>
+                </div>
             }
-        </MudCardContent>
+        </div>
+    }
+    else
+    {
+        <!-- Table view -->
+        <MudTable T="HubSpotContact" Items="_paged" Dense="true" Hover="true" Striped="true"
+                  Breakpoint="Breakpoint.Sm"
+                  OnRowClick="@(e => Nav.NavigateTo($"/contact-profile/{e.Item.HsObjectId}"))">
+            <HeaderContent>
+                <MudTh>مخاطب</MudTh>
+                <MudTh>کد ملی</MudTh>
+                <MudTh>موبایل</MudTh>
+                <MudTh>ایمیل</MudTh>
+                <MudTh>شرکت</MudTh>
+                <MudTh>تاریخ تولد</MudTh>
+                <MudTh>ثبت</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd style="cursor:pointer;">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <div class="cnt-avatar" style="width:32px;height:32px;font-size:.8rem;">
+                            @((context.FirstName ?? "?").Substring(0,1).ToUpper())
+                        </div>
+                        <div>
+                            <div style="font-weight:600;">@($"{context.FirstName} {context.LastName}".Trim())</div>
+                            @if (!string.IsNullOrWhiteSpace(context.FatherName))
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">فرزند: @context.FatherName</MudText>
+                            }
+                        </div>
+                    </div>
+                </MudTd>
+                <MudTd>@(context.NCode ?? "—")</MudTd>
+                <MudTd dir="ltr">@(context.MobilePhone ?? context.Phone ?? "—")</MudTd>
+                <MudTd dir="ltr">@(context.Email ?? "—")</MudTd>
+                <MudTd>@(context.Company ?? "—")</MudTd>
+                <MudTd>@(context.BirthDate ?? "—")</MudTd>
+                <MudTd><MudText Typo="Typo.caption">@AppState.FormatDate(context.CreatedAt)</MudText></MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small" Color="Color.Primary"
+                                   OnClick="@(() => Nav.NavigateTo($"/contact-profile/{context.HsObjectId}"))" />
+                    @if (_apiConfigured)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                       OnClick="@(() => DeleteContact(context))" />
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
 
-        @if (_totalPages > 1)
-        {
-            <MudCardActions Class="justify-center pa-3">
-                <MudPagination Count="@_totalPages" Selected="@_page"
-                               Color="Color.Primary"
-                               SelectedChanged="@(v => { _page = v; StateHasChanged(); })" />
-            </MudCardActions>
-        }
-    </MudCard>
+    @if (_totalPages > 1)
+    {
+        <div style="display:flex;justify-content:center;margin-top:16px;">
+            <MudPagination Count="@_totalPages" Selected="@_page" Color="Color.Primary"
+                           SelectedChanged="@(v => { _page = v; StateHasChanged(); })" />
+        </div>
+    }
 </div>
 
 @code {
     private List<HubSpotContact> _contacts = new();
     private bool _loading = true;
     private bool _syncing;
-    private string _search = "";
+    private string _search    = "";
+    private string _viewMode  = "grid";
 
-    // Pagination
-    private int _page     = 1;
-    private const int PageSize = 30;
+    private int _page = 1;
+    private const int PageSize = 24;
 
-    private string _apiKey => AppState.HubSpotApiKey;
+    private string _apiKey       => AppState.HubSpotApiKey;
     private bool   _apiConfigured => !string.IsNullOrWhiteSpace(_apiKey);
 
     private IEnumerable<HubSpotContact> _filtered =>
         string.IsNullOrWhiteSpace(_search)
             ? _contacts
             : _contacts.Where(c =>
-                (c.FirstName?.Contains(_search, StringComparison.OrdinalIgnoreCase)    ?? false) ||
-                (c.LastName?.Contains(_search, StringComparison.OrdinalIgnoreCase)     ?? false) ||
-                (c.Email?.Contains(_search, StringComparison.OrdinalIgnoreCase)        ?? false) ||
-                (c.NCode?.Contains(_search, StringComparison.OrdinalIgnoreCase)        ?? false) ||
-                (c.MobilePhone?.Contains(_search, StringComparison.OrdinalIgnoreCase)  ?? false) ||
-                (c.Phone?.Contains(_search, StringComparison.OrdinalIgnoreCase)        ?? false) ||
-                (c.Company?.Contains(_search, StringComparison.OrdinalIgnoreCase)      ?? false) ||
-                c.HsObjectId.Contains(_search, StringComparison.OrdinalIgnoreCase));
+                (c.FirstName?.Contains(_search,   StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (c.LastName?.Contains(_search,    StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (c.Email?.Contains(_search,       StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (c.NCode?.Contains(_search,       StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (c.MobilePhone?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (c.Phone?.Contains(_search,       StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (c.Company?.Contains(_search,     StringComparison.OrdinalIgnoreCase) ?? false) ||
+                c.HsObjectId.Contains(_search,    StringComparison.OrdinalIgnoreCase));
 
     private IEnumerable<HubSpotContact> _paged =>
         _filtered.Skip((_page - 1) * PageSize).Take(PageSize);
@@ -195,103 +329,62 @@
     {
         if (string.IsNullOrWhiteSpace(AppState.HubSpotApiKey))
             AppState.HubSpotApiKey = await HubSpotService.GetApiKeyAsync() ?? "";
-
-        // Show local data immediately, then sync from HubSpot in background
         await LoadLocalContacts();
-
-        if (_apiConfigured)
-            await SyncFromHubSpotAsync();
+        if (_apiConfigured) await SyncFromHubSpotAsync();
     }
 
     private async Task LoadContacts()
     {
         await LoadLocalContacts();
-        if (_apiConfigured)
-            await SyncFromHubSpotAsync();
+        if (_apiConfigured) await SyncFromHubSpotAsync();
     }
 
     private async Task LoadLocalContacts()
     {
-        _loading = true;
-        _contacts = await Db.HubSpotContacts
-            .AsNoTracking()
+        _loading  = true;
+        _contacts = await Db.HubSpotContacts.AsNoTracking()
             .Where(c => !c.IsDeleted)
             .OrderByDescending(c => c.CreatedAt)
             .ToListAsync();
         _loading = false;
     }
 
-    /// <summary>
-    /// Fetches all contacts from HubSpot API and upserts them into local DB,
-    /// then reloads the local list so the UI shows fresh data.
-    /// </summary>
     private async Task SyncFromHubSpotAsync()
     {
-        _syncing = true;
-        StateHasChanged();
+        _syncing = true; StateHasChanged();
         try
         {
-            var liveContacts = await HubSpotService.GetContactsAsync(_apiKey, limit: 500);
-            foreach (var c in liveContacts)
-                await HubSpotService.SaveContactLocallyAsync(c);
-
-            // Reload local list
-            _contacts = await Db.HubSpotContacts
-                .AsNoTracking()
-                .Where(x => !x.IsDeleted)
-                .OrderByDescending(x => x.CreatedAt)
-                .ToListAsync();
+            var live = await HubSpotService.GetContactsAsync(_apiKey, limit: 500);
+            foreach (var c in live) await HubSpotService.SaveContactLocallyAsync(c);
+            _contacts = await Db.HubSpotContacts.AsNoTracking()
+                .Where(x => !x.IsDeleted).OrderByDescending(x => x.CreatedAt).ToListAsync();
         }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"هشدار: همگام‌سازی هاب‌اسپات ناموفق بود — {ex.Message}", Severity.Warning);
-        }
+        catch (Exception ex) { Snackbar.Add($"همگام‌سازی ناموفق: {ex.Message}", Severity.Warning); }
         finally { _syncing = false; StateHasChanged(); }
     }
 
     private async Task OpenCreateDialog()
     {
         if (!_apiConfigured) return;
-        var parameters = new DialogParameters { ["ApiKey"] = _apiKey };
-        var dialog = await DialogService.ShowAsync<ContactCreateDialog>(
-            "افزودن مخاطب جدید", parameters,
+        var p = new DialogParameters { ["ApiKey"] = _apiKey };
+        var d = await DialogService.ShowAsync<ContactCreateDialog>("مخاطب جدید", p,
             new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
-        var result = await dialog.Result;
-        if (result is { Canceled: false })
-        {
-            Snackbar.Add("مخاطب با موفقیت ایجاد شد ✓", Severity.Success);
-            await LoadContacts();
-        }
+        if (!(await d.Result).Canceled) { Snackbar.Add("مخاطب ایجاد شد ✓", Severity.Success); await LoadContacts(); }
     }
 
     private async Task DeleteContact(HubSpotContact contact)
     {
-        var confirm = await DialogService.ShowMessageBox(
-            "حذف مخاطب",
-            $"آیا مخاطب «{contact.FirstName} {contact.LastName}» حذف شود؟ این عملیات از هاب‌اسپات نیز حذف می‌کند.",
-            yesText: "بله، حذف شود", cancelText: "خیر");
-        if (confirm != true) return;
-
+        if (await DialogService.ShowMessageBox("حذف مخاطب",
+            $"مخاطب «{contact.FirstName} {contact.LastName}» حذف شود؟",
+            "بله، حذف", cancelText: "خیر") != true) return;
         try
         {
-            if (_apiConfigured)
-                await HubSpotService.DeleteContactAsync(_apiKey, contact.HsObjectId);
-
-            // Soft-delete locally
+            if (_apiConfigured) await HubSpotService.DeleteContactAsync(_apiKey, contact.HsObjectId);
             var local = await Db.HubSpotContacts.FindAsync(contact.Id);
-            if (local != null)
-            {
-                local.IsDeleted = true;
-                local.DeletedAt = DateTime.UtcNow;
-                await Db.SaveChangesAsync();
-            }
-
-            Snackbar.Add("مخاطب حذف شد", Severity.Info);
+            if (local != null) { local.IsDeleted = true; local.DeletedAt = DateTime.UtcNow; await Db.SaveChangesAsync(); }
+            Snackbar.Add("حذف شد", Severity.Info);
             await LoadContacts();
         }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"خطا در حذف: {ex.Message}", Severity.Error);
-        }
+        catch (Exception ex) { Snackbar.Add($"خطا: {ex.Message}", Severity.Error); }
     }
 }

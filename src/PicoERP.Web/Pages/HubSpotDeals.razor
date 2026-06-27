@@ -9,27 +9,54 @@
 
 <PageTitle>دیل‌های CRM — پیکو ERP</PageTitle>
 
+<style>
+    .deals-hero { background: linear-gradient(135deg,#0091AE 0%,#00B4D8 100%); border-radius:16px; padding:28px 32px; color:#fff; margin-bottom:24px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; }
+    .deals-hero-title { font-size:1.6rem; font-weight:800; margin:0; }
+    .deals-hero-sub   { font-size:.875rem; opacity:.85; margin:4px 0 0; }
+    .kpi-row          { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; margin-bottom:22px; }
+    .kpi-card         { background:var(--mud-palette-surface); border:1px solid var(--mud-palette-divider); border-radius:12px; padding:16px 18px; display:flex; align-items:center; gap:14px; }
+    .kpi-icon         { width:42px; height:42px; border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .kpi-val          { font-size:1.25rem; font-weight:800; line-height:1.2; }
+    .kpi-lbl          { font-size:.75rem; color:#6b7280; margin-top:2px; }
+    .filter-bar       { background:var(--mud-palette-surface); border:1px solid var(--mud-palette-divider); border-radius:12px; padding:16px 20px; margin-bottom:18px; }
+    .deal-card        { border:1px solid var(--mud-palette-divider); border-radius:12px; padding:16px; margin-bottom:10px; cursor:pointer; transition:box-shadow .15s, border-color .15s; background:var(--mud-palette-surface); }
+    .deal-card:hover  { box-shadow:0 4px 18px rgba(0,0,0,.10); border-color:#0091AE; }
+    .deal-name        { font-size:.95rem; font-weight:700; color:var(--mud-palette-text-primary); }
+    .deal-meta        { font-size:.75rem; color:#6b7280; margin-top:3px; }
+    .deal-amount      { font-size:1.05rem; font-weight:800; color:#0891b2; white-space:nowrap; }
+    .deal-actions     { display:flex; gap:2px; flex-shrink:0; }
+    .stage-pill       { display:inline-flex; align-items:center; gap:4px; padding:2px 10px; border-radius:20px; font-size:.72rem; font-weight:700; }
+    .stage-won        { background:#dcfce7; color:#166534; }
+    .stage-lost       { background:#fee2e2; color:#991b1b; }
+    .stage-progress   { background:#e0f2fe; color:#0369a1; }
+    .stage-default    { background:#f3f4f6; color:#374151; }
+    .contact-badge    { display:inline-flex; align-items:center; gap:5px; font-size:.78rem; color:#374151; }
+    .avatar-xs        { width:24px; height:24px; border-radius:50%; background:#FF7A59; color:#fff; font-size:.65rem; font-weight:700; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .empty-hero       { text-align:center; padding:60px 20px; color:#9ca3af; }
+    .empty-hero svg   { opacity:.3; margin-bottom:12px; }
+</style>
+
 <div class="pico-page" dir="rtl">
-    <div class="page-header">
+
+    <!-- Hero header -->
+    <div class="deals-hero">
         <div>
-            <MudText Typo="Typo.h4" Class="page-title">دیل‌های CRM</MudText>
-            <MudText Typo="Typo.caption" Color="Color.Secondary">
-                مدیریت دیل‌های هاب‌اسپات — ایجاد، ویرایش و حذف
-            </MudText>
+            <p class="deals-hero-title">🤝 دیل‌های CRM</p>
+            <p class="deals-hero-sub">مدیریت فرصت‌های فروش — ایجاد، ویرایش و پیگیری</p>
         </div>
-        <div class="header-actions">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
             <MudButton Variant="Variant.Outlined"
                        StartIcon="@Icons.Material.Filled.Refresh"
                        OnClick="FetchDeals"
                        Disabled="@(_loading || !_apiConfigured)"
-                       Class="no-print ml-2">
+                       Style="background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.4);">
                 @(_loading ? "در حال دریافت..." : "بروزرسانی")
             </MudButton>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+            <MudButton Variant="Variant.Filled"
                        StartIcon="@Icons.Material.Filled.Add"
                        OnClick="OpenCreateDialog"
                        Disabled="@(!_apiConfigured)"
-                       Class="no-print">
+                       Style="background:#fff;color:#0091AE;font-weight:700;">
                 دیل جدید
             </MudButton>
         </div>
@@ -43,182 +70,226 @@
         </MudAlert>
     }
 
-    <!-- Filter bar -->
-    <MudCard Elevation="1" Class="pico-card mb-4">
-        <MudCardContent>
-            <MudGrid Spacing="2" AlignItems="AlignItems.Center">
-                <MudItem xs="12" sm="4">
-                    <MudDatePicker @bind-Date="_dealFrom"
-                                   Label="از تاریخ بستن"
-                                   Variant="Variant.Outlined"
-                                   Margin="Margin.Dense"
-                                   Clearable="true" />
-                </MudItem>
-                <MudItem xs="12" sm="4">
-                    <MudDatePicker @bind-Date="_dealTo"
-                                   Label="تا تاریخ بستن"
-                                   Variant="Variant.Outlined"
-                                   Margin="Margin.Dense"
-                                   Clearable="true" />
-                </MudItem>
-                <MudItem xs="12" sm="4">
-                    <MudTextField @bind-Value="_search"
-                                  Label="جستجو در دیل‌ها"
-                                  Variant="Variant.Outlined"
-                                  Margin="Margin.Dense"
-                                  Adornment="Adornment.End"
-                                  AdornmentIcon="@Icons.Material.Filled.Search"
-                                  Immediate="true"
-                                  TextChanged="@(_ => { _page = 1; StateHasChanged(); })" />
-                </MudItem>
-            </MudGrid>
-        </MudCardContent>
-    </MudCard>
+    <!-- KPI row -->
+    @if (_deals != null)
+    {
+        <div class="kpi-row">
+            <div class="kpi-card">
+                <div class="kpi-icon" style="background:#e0f2fe;">
+                    <MudIcon Icon="@Icons.Material.Filled.Handshake" Style="color:#0891b2;" />
+                </div>
+                <div>
+                    <div class="kpi-val">@_deals.Count</div>
+                    <div class="kpi-lbl">کل دیل‌ها</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-icon" style="background:#dcfce7;">
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Style="color:#16a34a;" />
+                </div>
+                <div>
+                    <div class="kpi-val">@_deals.Count(d => d.Stage == "closedwon")</div>
+                    <div class="kpi-lbl">برنده‌شده</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-icon" style="background:#fef9c3;">
+                    <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Style="color:#ca8a04;" />
+                </div>
+                <div>
+                    <div class="kpi-val">@_deals.Count(d => d.Stage != "closedwon" && d.Stage != "closedlost")</div>
+                    <div class="kpi-lbl">در جریان</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-icon" style="background:#f0f9ff;">
+                    <MudIcon Icon="@Icons.Material.Filled.AttachMoney" Style="color:#0369a1;" />
+                </div>
+                <div>
+                    <div class="kpi-val" style="font-size:1rem;">@AppState.FormatAmount(_deals.Where(d=>d.Stage=="closedwon").Sum(d=>d.Amount))</div>
+                    <div class="kpi-lbl">مجموع برنده‌شده</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-icon" style="background:#faf5ff;">
+                    <MudIcon Icon="@Icons.Material.Filled.MonetizationOn" Style="color:#7c3aed;" />
+                </div>
+                <div>
+                    <div class="kpi-val" style="font-size:1rem;">@AppState.FormatAmount(_filtered.Sum(d=>d.Amount))</div>
+                    <div class="kpi-lbl">مجموع نمایش فعلی</div>
+                </div>
+            </div>
+        </div>
+    }
 
-    <!-- Deals table -->
-    <MudCard Elevation="2" Class="pico-card">
-        <MudCardHeader>
-            <CardHeaderContent>
-                <MudText Typo="Typo.h6">
-                    <MudIcon Icon="@Icons.Material.Filled.Handshake" Style="vertical-align:middle; margin-left:6px;" />
-                    دیل‌ها (@_filtered.Count() مورد)
-                </MudText>
-            </CardHeaderContent>
-        </MudCardHeader>
-        <MudCardContent Class="pa-0">
-            @if (_loading)
+    <!-- Filter bar -->
+    <div class="filter-bar">
+        <MudGrid Spacing="2" AlignItems="AlignItems.Center">
+            <MudItem xs="12" sm="3">
+                <MudDatePicker @bind-Date="_createFrom"
+                               Label="از تاریخ ایجاد"
+                               Variant="Variant.Outlined"
+                               Margin="Margin.Dense"
+                               Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudDatePicker @bind-Date="_createTo"
+                               Label="تا تاریخ ایجاد"
+                               Variant="Variant.Outlined"
+                               Margin="Margin.Dense"
+                               Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSelect @bind-Value="_stageFilter"
+                           Label="مرحله"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           Clearable="true">
+                    @foreach (var s in _stages)
+                    {
+                        <MudSelectItem Value="@s.Id">@s.Label</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudTextField @bind-Value="_search"
+                              Label="جستجو در دیل‌ها"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Adornment="Adornment.End"
+                              AdornmentIcon="@Icons.Material.Filled.Search"
+                              Immediate="true"
+                              TextChanged="@(_ => { _page = 1; StateHasChanged(); })" />
+            </MudItem>
+        </MudGrid>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">نمایش سریع:</MudText>
+            <MudChip T="string" Size="Size.Small" OnClick="@(() => SetQuickFilter(30))"  Color="Color.Primary" Variant="Variant.Outlined">۳۰ روز اخیر</MudChip>
+            <MudChip T="string" Size="Size.Small" OnClick="@(() => SetQuickFilter(90))"  Color="Color.Primary" Variant="Variant.Outlined">۹۰ روز اخیر</MudChip>
+            <MudChip T="string" Size="Size.Small" OnClick="@(() => SetQuickFilter(365))" Color="Color.Primary" Variant="Variant.Outlined">یک سال اخیر</MudChip>
+            <MudChip T="string" Size="Size.Small" OnClick="@ClearFilters" Color="Color.Default" Variant="Variant.Outlined">همه</MudChip>
+            <div style="margin-right:auto;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@_filtered.Count() دیل</MudText>
+            </div>
+        </div>
+    </div>
+
+    <!-- Deals list -->
+    @if (_loading)
+    {
+        <div style="display:flex;flex-direction:column;gap:10px;">
+            @for (int i = 0; i < 6; i++)
             {
-                <div class="loading-center">
-                    <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
-                </div>
+                <MudSkeleton Height="76px" Style="border-radius:12px;" />
             }
-            else if (!_filtered.Any())
-            {
-                <div class="empty-state-sm">
-                    <MudIcon Icon="@Icons.Material.Filled.SearchOff" />
-                    <span>@(_deals == null ? "دکمه بروزرسانی را بزنید تا دیل‌ها بارگذاری شوند" : "هیچ دیلی یافت نشد")</span>
-                </div>
-            }
-            else
-            {
-                <MudTable T="HubSpotDealDto" Items="_paged" Dense="true" Hover="true" Striped="true"
-                          Breakpoint="Breakpoint.Sm"
-                          OnRowClick="@(e => Nav.NavigateTo($"/deal/{e.Item.Id}"))">
-                    <HeaderContent>
-                        <MudTh>نام دیل</MudTh>
-                        <MudTh>مبلغ</MudTh>
-                        <MudTh>مرحله</MudTh>
-                        <MudTh>تاریخ بستن</MudTh>
-                        <MudTh>مخاطب</MudTh>
-                        <MudTh>ایجاد</MudTh>
-                        <MudTh></MudTh>
-                    </HeaderContent>
-                    <RowTemplate>
-                        <MudTd style="cursor:pointer;">
-                            <MudText Typo="Typo.body2" Style="font-weight:600;">
-                                @context.DealName
-                            </MudText>
-                            <MudText Typo="Typo.caption" Color="Color.Secondary" dir="ltr">
-                                ID: @context.Id
-                            </MudText>
-                        </MudTd>
-                        <MudTd>
-                            <span class="amount-positive">@AppState.FormatAmount(context.Amount)</span>
-                            @if (!string.IsNullOrWhiteSpace(context.Currency) && context.Currency != "IRR")
+        </div>
+    }
+    else if (!_filtered.Any())
+    {
+        <div class="empty-hero">
+            <MudIcon Icon="@Icons.Material.Filled.SearchOff" Style="font-size:4rem;opacity:.25;" />
+            <MudText Typo="Typo.h6" Style="margin-top:12px;">
+                @(_deals == null ? "دکمه بروزرسانی را بزنید" : "هیچ دیلی یافت نشد")
+            </MudText>
+        </div>
+    }
+    else
+    {
+        @foreach (var deal in _paged)
+        {
+            <div class="deal-card" @onclick="@(() => Nav.NavigateTo($"/deal/{deal.Id}"))">
+                <div style="display:flex;align-items:flex-start;gap:14px;">
+                    <!-- Stage color bar -->
+                    <div style="width:4px;min-height:52px;border-radius:4px;background:@GetStageBarColor(deal.Stage);flex-shrink:0;"></div>
+
+                    <!-- Main content -->
+                    <div style="flex:1;min-width:0;">
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                            <span class="deal-name">@deal.DealName</span>
+                            <span class="@GetStagePillClass(deal.Stage)">
+                                @GetStageLabel(deal.Stage)
+                            </span>
+                        </div>
+                        <div class="deal-meta" style="display:flex;gap:14px;margin-top:5px;flex-wrap:wrap;">
+                            @if (!string.IsNullOrWhiteSpace(deal.AssociatedContactId))
                             {
-                                <MudText Typo="Typo.caption" Color="Color.Secondary"> (@context.Currency)</MudText>
+                                <span class="contact-badge">
+                                    <span class="avatar-xs">@((deal.ContactFirstName ?? "?").Substring(0,1).ToUpper())</span>
+                                    @($"{deal.ContactFirstName} {deal.ContactLastName}".Trim())
+                                </span>
                             }
-                        </MudTd>
-                        <MudTd>
-                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
-                                     Color="@GetStageColor(context.Stage)">
-                                @(GetStageLabel(context.Stage))
-                            </MudChip>
-                        </MudTd>
-                        <MudTd>
-                            <MudText Typo="Typo.caption">
-                                @(context.CloseDate.HasValue ? AppState.FormatDate(context.CloseDate.Value) : "—")
-                            </MudText>
-                        </MudTd>
-                        <MudTd>
-                            @if (!string.IsNullOrWhiteSpace(context.AssociatedContactId))
+                            <span>📅 ایجاد: @(deal.CreateDate.HasValue ? AppState.FormatDate(deal.CreateDate.Value) : "—")</span>
+                            @if (deal.CloseDate.HasValue)
                             {
-                                <MudLink OnClick="@(() => Nav.NavigateTo($"/contact-profile/{context.AssociatedContactId}"))"
-                                         Style="cursor:pointer;">
-                                    @($"{context.ContactFirstName} {context.ContactLastName}".Trim())
-                                </MudLink>
+                                <span>🎯 بستن: @AppState.FormatDate(deal.CloseDate.Value)</span>
                             }
-                            else
-                            {
-                                <span>—</span>
-                            }
-                        </MudTd>
-                        <MudTd>
-                            <MudText Typo="Typo.caption">
-                                @(context.CreateDate.HasValue ? AppState.FormatDate(context.CreateDate.Value) : "—")
-                            </MudText>
-                        </MudTd>
-                        <MudTd>
-                            <MudTooltip Text="مشاهده جزئیات">
-                                <MudIconButton Icon="@Icons.Material.Filled.OpenInNew"
-                                               Size="Size.Small" Color="Color.Primary"
-                                               OnClick="@(() => Nav.NavigateTo($"/deal/{context.Id}"))" />
+                            <span dir="ltr" style="color:#9ca3af;font-size:.7rem;">ID: @deal.Id</span>
+                        </div>
+                    </div>
+
+                    <!-- Amount + actions -->
+                    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0;">
+                        <span class="deal-amount">@AppState.FormatAmount(deal.Amount)</span>
+                        <div class="deal-actions" @onclick:stopPropagation="true">
+                            <MudTooltip Text="جزئیات">
+                                <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small" Color="Color.Primary"
+                                               OnClick="@(() => Nav.NavigateTo($"/deal/{deal.Id}"))" />
                             </MudTooltip>
-                            <MudTooltip Text="ثبت به عنوان درآمد">
-                                <MudIconButton Icon="@Icons.Material.Filled.AddCard"
-                                               Size="Size.Small" Color="Color.Success"
-                                               OnClick="@(() => OpenAddToIncomeDialog(context))" />
+                            <MudTooltip Text="ثبت درآمد">
+                                <MudIconButton Icon="@Icons.Material.Filled.AddCard" Size="Size.Small" Color="Color.Success"
+                                               OnClick="@(() => OpenAddToIncomeDialog(deal))" />
                             </MudTooltip>
                             <MudTooltip Text="ویرایش">
-                                <MudIconButton Icon="@Icons.Material.Filled.Edit"
-                                               Size="Size.Small" Color="Color.Default"
-                                               OnClick="@(() => OpenEditDialog(context))" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Default"
+                                               OnClick="@(() => OpenEditDialog(deal))" />
                             </MudTooltip>
                             <MudTooltip Text="حذف">
-                                <MudIconButton Icon="@Icons.Material.Filled.Delete"
-                                               Size="Size.Small" Color="Color.Error"
-                                               OnClick="@(() => DeleteDeal(context))" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                               OnClick="@(() => DeleteDeal(deal))" />
                             </MudTooltip>
-                        </MudTd>
-                    </RowTemplate>
-                </MudTable>
-            }
-        </MudCardContent>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
 
         @if (_totalPages > 1)
         {
-            <MudCardActions Class="justify-center pa-3">
-                <MudPagination Count="@_totalPages" Selected="@_page"
-                               Color="Color.Primary"
+            <div style="display:flex;justify-content:center;margin-top:16px;">
+                <MudPagination Count="@_totalPages" Selected="@_page" Color="Color.Primary"
                                SelectedChanged="@(v => { _page = v; StateHasChanged(); })" />
-            </MudCardActions>
+            </div>
         }
-    </MudCard>
+    }
 </div>
 
 @code {
     private List<HubSpotDealDto>? _deals;
     private List<HubSpotDealStageDto> _stages = new();
     private bool _loading;
-    private DateTime? _dealFrom;
-    private DateTime? _dealTo;
-    private string _search = "";
+    private DateTime? _createFrom;
+    private DateTime? _createTo;
+    private string _search       = "";
+    private string? _stageFilter;
 
-    // Pagination
-    private int _page     = 1;
-    private const int PageSize = 25;
+    private int _page = 1;
+    private const int PageSize = 20;
 
-    private string _apiKey => AppState.HubSpotApiKey;
+    private string _apiKey      => AppState.HubSpotApiKey;
     private bool   _apiConfigured => !string.IsNullOrWhiteSpace(_apiKey);
 
+    // Filter by createdate client-side (HubSpot API fetches all, we filter here)
     private IEnumerable<HubSpotDealDto> _filtered =>
-        _deals == null ? Enumerable.Empty<HubSpotDealDto>() :
-        string.IsNullOrWhiteSpace(_search) ? _deals :
-        _deals.Where(d =>
-            d.DealName.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
-            (d.ContactFirstName?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false) ||
-            (d.ContactLastName?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false) ||
-            d.Id.Contains(_search, StringComparison.OrdinalIgnoreCase));
+        (_deals ?? Enumerable.Empty<HubSpotDealDto>())
+        .Where(d =>
+            (_createFrom == null || (d.CreateDate.HasValue && d.CreateDate.Value.Date >= _createFrom.Value.Date)) &&
+            (_createTo   == null || (d.CreateDate.HasValue && d.CreateDate.Value.Date <= _createTo.Value.Date))   &&
+            (_stageFilter == null || d.Stage == _stageFilter) &&
+            (string.IsNullOrWhiteSpace(_search) ||
+             d.DealName.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+             (d.ContactFirstName?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false) ||
+             (d.ContactLastName?.Contains(_search, StringComparison.OrdinalIgnoreCase)  ?? false) ||
+             d.Id.Contains(_search, StringComparison.OrdinalIgnoreCase)));
 
     private IEnumerable<HubSpotDealDto> _paged =>
         _filtered.Skip((_page - 1) * PageSize).Take(PageSize);
@@ -243,123 +314,103 @@
     {
         if (!_apiConfigured) return;
         _loading = true;
-        _page = 1;
-        try
-        {
-            _deals = await HubSpotService.GetDealsAsync(_apiKey, _dealFrom, _dealTo, 200);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"خطا در دریافت دیل‌ها: {ex.Message}", Severity.Error);
-        }
+        _page    = 1;
+        try   { _deals = await HubSpotService.GetDealsAsync(_apiKey, null, null, 500); }
+        catch (Exception ex) { Snackbar.Add($"خطا: {ex.Message}", Severity.Error); }
         finally { _loading = false; }
+    }
+
+    private void SetQuickFilter(int days)
+    {
+        _createFrom = DateTime.Today.AddDays(-days);
+        _createTo   = null;
+        _page       = 1;
+        StateHasChanged();
+    }
+
+    private void ClearFilters()
+    {
+        _createFrom  = null;
+        _createTo    = null;
+        _stageFilter = null;
+        _search      = "";
+        _page        = 1;
+        StateHasChanged();
     }
 
     private async Task OpenCreateDialog()
     {
-        var parameters = new DialogParameters { ["ApiKey"] = _apiKey };
-        var dialog = await DialogService.ShowAsync<DealCreateDialog>(
-            "ایجاد دیل جدید", parameters,
+        var p = new DialogParameters { ["ApiKey"] = _apiKey };
+        var d = await DialogService.ShowAsync<DealCreateDialog>("دیل جدید", p,
             new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true });
-        var result = await dialog.Result;
-        if (result is { Canceled: false })
-        {
-            Snackbar.Add("دیل با موفقیت ایجاد شد ✓", Severity.Success);
-            await FetchDeals();
-        }
+        if (!(await d.Result).Canceled) { Snackbar.Add("دیل ایجاد شد ✓", Severity.Success); await FetchDeals(); }
     }
 
     private async Task OpenEditDialog(HubSpotDealDto deal)
     {
-        var parameters = new DialogParameters
-        {
-            ["ApiKey"]       = _apiKey,
-            ["IsEdit"]       = true,
-            ["ExistingDeal"] = deal
-        };
-        var dialog = await DialogService.ShowAsync<DealCreateDialog>(
-            "ویرایش دیل", parameters,
+        var p = new DialogParameters { ["ApiKey"] = _apiKey, ["IsEdit"] = true, ["ExistingDeal"] = deal };
+        var d = await DialogService.ShowAsync<DealCreateDialog>("ویرایش دیل", p,
             new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true });
-        var result = await dialog.Result;
-        if (result is { Canceled: false })
-        {
-            Snackbar.Add("دیل ویرایش شد ✓", Severity.Success);
-            await FetchDeals();
-        }
+        if (!(await d.Result).Canceled) { Snackbar.Add("دیل ویرایش شد ✓", Severity.Success); await FetchDeals(); }
     }
 
     private async Task OpenAddToIncomeDialog(HubSpotDealDto deal)
     {
-        // Build a PendingDeal-like object from the live HubSpotDealDto
         var pending = new PicoERP.Domain.Entities.PendingDeal
         {
-            HubSpotDealId = deal.Id,
-            DealName      = deal.DealName,
-            Amount        = deal.Amount,
-            Currency      = deal.Currency,
-            Stage         = deal.Stage,
-            ContactName   = $"{deal.ContactFirstName} {deal.ContactLastName}".Trim()
+            HubSpotDealId = deal.Id, DealName = deal.DealName, Amount = deal.Amount,
+            Currency = deal.Currency, Stage = deal.Stage,
+            ContactName = $"{deal.ContactFirstName} {deal.ContactLastName}".Trim()
         };
-
         var categories = await IncomeService.GetCategoriesAsync();
-        var parameters = new DialogParameters
-        {
-            ["Deal"]       = pending,
-            ["Categories"] = categories
-        };
-        var dialog = await DialogService.ShowAsync<HubSpotApproveDialog>(
-            "ثبت دیل به عنوان درآمد", parameters,
+        var p = new DialogParameters { ["Deal"] = pending, ["Categories"] = categories };
+        var d = await DialogService.ShowAsync<HubSpotApproveDialog>("ثبت درآمد", p,
             new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
-        var result = await dialog.Result;
-        if (result is { Canceled: false, Data: CreateIncomeDto dto })
+        var res = await d.Result;
+        if (res is { Canceled: false, Data: CreateIncomeDto dto })
         {
             try
             {
-                var res = await IncomeService.CreateAsync(dto,
-                    AppState.CurrentUser?.DisplayName ?? "hubspot");
-                if (res.IsSuccess)
-                    Snackbar.Add("درآمد با موفقیت ثبت شد ✓", Severity.Success);
-                else
-                    Snackbar.Add(res.Error ?? "خطا", Severity.Error);
+                var r = await IncomeService.CreateAsync(dto, AppState.CurrentUser?.DisplayName ?? "hubspot");
+                Snackbar.Add(r.IsSuccess ? "درآمد ثبت شد ✓" : (r.Error ?? "خطا"),
+                             r.IsSuccess ? Severity.Success : Severity.Error);
             }
-            catch (Exception ex)
-            {
-                Snackbar.Add($"خطا: {ex.Message}", Severity.Error);
-            }
+            catch (Exception ex) { Snackbar.Add($"خطا: {ex.Message}", Severity.Error); }
         }
     }
 
     private async Task DeleteDeal(HubSpotDealDto deal)
     {
-        var confirm = await DialogService.ShowMessageBox(
-            "حذف دیل",
-            $"آیا دیل «{deal.DealName}» حذف شود؟ این عملیات از هاب‌اسپات نیز حذف می‌کند.",
-            yesText: "بله، حذف شود", cancelText: "خیر");
-        if (confirm != true) return;
+        if (await DialogService.ShowMessageBox("حذف دیل",
+            $"دیل «{deal.DealName}» از هاب‌اسپات حذف شود؟",
+            "بله، حذف", cancelText: "خیر") != true) return;
         try
         {
             await HubSpotService.DeleteDealAsync(_apiKey, deal.Id);
-            Snackbar.Add("دیل حذف شد", Severity.Info);
+            Snackbar.Add("حذف شد", Severity.Info);
             await FetchDeals();
         }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"خطا در حذف: {ex.Message}", Severity.Error);
-        }
+        catch (Exception ex) { Snackbar.Add($"خطا: {ex.Message}", Severity.Error); }
     }
 
-    private string GetStageLabel(string? stageId)
+    private string GetStageLabel(string? id)
     {
-        if (string.IsNullOrWhiteSpace(stageId)) return "—";
-        var found = _stages.FirstOrDefault(s => s.Id == stageId);
-        return found?.Label ?? stageId;
+        if (string.IsNullOrWhiteSpace(id)) return "—";
+        return _stages.FirstOrDefault(s => s.Id == id)?.Label ?? id;
     }
 
-    private Color GetStageColor(string? stageId) => stageId switch
+    private string GetStageBarColor(string? id) => id switch
     {
-        "closedwon"  => Color.Success,
-        "closedlost" => Color.Error,
-        "contractsent" => Color.Warning,
-        _ => Color.Primary
+        "closedwon"    => "#16a34a",
+        "closedlost"   => "#dc2626",
+        "contractsent" => "#d97706",
+        _              => "#0891b2"
+    };
+
+    private string GetStagePillClass(string? id) => id switch
+    {
+        "closedwon"  => "stage-pill stage-won",
+        "closedlost" => "stage-pill stage-lost",
+        _            => "stage-pill stage-progress"
     };
 }
